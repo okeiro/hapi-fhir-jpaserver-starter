@@ -1,14 +1,17 @@
 version: "3"
 services:
   hapi-fhir-jpaserver-start:
-    build: .
-    container_name: hapi-fhir-jpaserver-start
+    image: mapping:test
     restart: on-failure
     environment:
       SPRING_DATASOURCE_URL: "jdbc:postgresql://hapi-fhir-postgres:5432/hapi"
       SPRING_DATASOURCE_USERNAME: "admin"
       SPRING_DATASOURCE_PASSWORD: "admin"
       SPRING_DATASOURCE_DRIVERCLASSNAME: "org.postgresql.Driver"
+      SPRING_CONFIG_ADDITIONAL_LOCATION: "/profiles/"
+      SPRING_PROFILES_ACTIVE: "mapping"
+    volumes:
+      - ./profiles:/profiles
     ports:
       - "8080:8080"
   hapi-fhir-postgres:

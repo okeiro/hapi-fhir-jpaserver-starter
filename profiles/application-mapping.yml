@@ -1,0 +1,4 @@
+hapi:
+  fhir:
+    mapping:
+      enabled: true

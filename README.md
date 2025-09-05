@@ -51,7 +51,7 @@ HAPI looks in the environment variables for properties in the [application.yaml]
 
 ### Configuration via overridden application.yaml file and using Docker
 
-You can customize HAPI by telling HAPI to look for the configuration file in a different location, e.g.:
+You can customize HAPI by telling HAPI to look for the configuration file in a different location, eg.:
 
 ```
 docker run -p 8090:8080 -v $(pwd)/yourLocalFolder:/configs -e "--spring.config.location=file:///configs/another.application.yaml" hapiproject/hapi:latest
@@ -111,6 +111,83 @@ spring:
     properties:
       hibernate.dialect: ca.uhn.fhir.jpa.model.dialect.HapiFhirPostgresDialect
       hibernate.search.enabled: false
+```
+
+
+### Configuration using additional external profiles yaml file and using Docker
+
+You can also add configuration files in addition to the existing file provided in the compiled set of resources.
+This allows you to only define the specific configuration you need to change from the base HAPI profile.
+
+Some example profiles are available in the **profiles** folder at the root of this project. The following command will
+bind the folder as a volume in the container and adds the environment variable to tell spring where to find additional
+config files.
+
+```
+docker run -p 8090:8080 -v ./profiles:/profiles -e "--spring.config.additional.location=/profiles" hapiproject/hapi:latest
+```
+
+This command will only check for the default configuration file **application.yaml**. If you want to use a specific profile
+from this folder, use additional spring environment variable as follows :
+
+```
+docker run -p 8090:8080 -v ./profiles:/profiles -e "--spring.config.additional.location=/profiles" -e "--spring.profiles.active=qe" hapiproject/hapi:latest
+```
+
+This way spring will look for the configuration for the profile you defined (here it will search for **application-qe.yaml**).
+
+You can also use several profiles using coma-separated list of profiles in the variable value :
+
+```
+--e "--spring.profiles.active=qe,other"
+```
+
+If you want to use this with docker-compose, here is an example file using a single external profile and a postgres container for database : 
+
+```yaml
+version: "3.8"
+services:
+  hapi-fhir-jpaserver-start:
+    build: .
+    container_name: hapi-fhir-jpaserver-start
+    restart: on-failure
+    environment:
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://hapi-fhir-postgres:5432/hapi"
+      SPRING_DATASOURCE_USERNAME: "admin"
+      SPRING_DATASOURCE_PASSWORD: "admin"
+      SPRING_DATASOURCE_DRIVERCLASSNAME: "org.postgresql.Driver"
+      SPRING_CONFIG_ADDITIONAL_LOCATION: "/profiles/"
+      SPRING_PROFILES_ACTIVE: "qe"
+    volumes:
+      - ./profiles:/profiles
+    ports:
+      - "8080:8080"
+  hapi-fhir-postgres:
+    image: postgres:15-alpine
+    container_name: hapi-fhir-postgres
+    restart: always
+    environment:
+      POSTGRES_DB: "hapi"
+      POSTGRES_USER: "admin"
+      POSTGRES_PASSWORD: "admin"
+    volumes:
+      - hapi-fhir-postgres:/var/lib/postgresql/data
+volumes:
+  hapi-fhir-postgres:
+```
+
+You can retrieve the environment variables : 
+
+```
+SPRING_CONFIG_ADDITIONAL_LOCATION: "/profiles/"
+SPRING_PROFILES_ACTIVE: "qe"
+```
+
+as well as the volume : 
+
+```
+volumes:
+  - ./profiles:/profiles
 ```
 
 ### Example running custom interceptor using docker-compose
@@ -237,7 +314,7 @@ The Server will then be accessible at http://localhost:8888/fhir and the Capabil
 ```bash
 mvn clean spring-boot:run -Pboot
 ```
-Server will then be accessible at http://localhost:8080/ and e.g. http://localhost:8080/fhir/metadata. Remember to adjust you overlay configuration in the application.yaml to the following:
+Server will then be accessible at http://localhost:8080/ and eg. http://localhost:8080/fhir/metadata. Remember to adjust you overlay configuration in the application.yaml to the following:
 
 ```yaml
     tester:
@@ -253,7 +330,7 @@ Server will then be accessible at http://localhost:8080/ and e.g. http://localho
 ```bash
 mvn clean package spring-boot:repackage -DskipTests=true -Pboot && java -jar target/ROOT.war
 ```
-Server will then be accessible at http://localhost:8080/ and e.g. http://localhost:8080/fhir/metadata. Remember to adjust your overlay configuration in the application.yaml to the following:
+Server will then be accessible at http://localhost:8080/ and eg. http://localhost:8080/fhir/metadata. Remember to adjust your overlay configuration in the application.yaml to the following:
 
 ```yaml
     tester:
@@ -268,7 +345,7 @@ Server will then be accessible at http://localhost:8080/ and e.g. http://localho
 ```bash
 mvn clean package com.google.cloud.tools:jib-maven-plugin:dockerBuild -Dimage=distroless-hapi && docker run -p 8080:8080 distroless-hapi
 ```
-Server will then be accessible at http://localhost:8080/ and e.g. http://localhost:8080/fhir/metadata. Remember to adjust your overlay configuration in the application.yaml to the following:
+Server will then be accessible at http://localhost:8080/ and eg. http://localhost:8080/fhir/metadata. Remember to adjust your overlay configuration in the application.yaml to the following:
 
 ```yaml
     tester:
@@ -284,7 +361,7 @@ Server will then be accessible at http://localhost:8080/ and e.g. http://localho
 ```bash
 ./build-docker-image.sh && docker run -p 8080:8080 hapi-fhir/hapi-fhir-jpaserver-starter:latest
 ```
-Server will then be accessible at http://localhost:8080/ and e.g. http://localhost:8080/fhir/metadata. Remember to adjust your overlay configuration in the application.yaml to the following:
+Server will then be accessible at http://localhost:8080/ and eg. http://localhost:8080/fhir/metadata. Remember to adjust your overlay configuration in the application.yaml to the following:
 
 ```yaml
     tester:
@@ -357,10 +434,11 @@ It is recommended to deploy a case-sensitive database prior to running HAPI FHIR
 Custom interceptors can be registered with the server by including the property `hapi.fhir.custom-interceptor-classes`. This will take a comma separated list of fully-qualified class names which will be registered with the server.
 Interceptors will be discovered in one of two ways:
 
-1) From the Spring application context as existing Beans (can be used in conjunction with `hapi.fhir.custom-bean-packages`) or registered with Spring via other methods
-2) Classes will be instantiated via reflection if no matching Bean is found
+1) discovered from the Spring application context as existing Beans (can be used in conjunction with `hapi.fhir.custom-bean-packages`) or registered with Spring via other methods
 
-Interceptors can also be registered manually through `RestfulServer.registerInterceptor`. Take note that any interceptor registered in this way _will not fire_ for non-REST operations, e.g. creation through a DAO. To trigger in this case, you need to register your interceptors on the `IInterceptorService` bean.
+or
+
+2) classes will be instantiated via reflection if no matching Bean is found
 
 ## Adding custom operations(providers)
 Custom operations(providers) can be registered with the server by including the property `hapi.fhir.custom-provider-classes`. This will take a comma separated list of fully-qualified class names which will be registered with the server.
@@ -384,7 +462,7 @@ Several template files that can be customized are found in the following directo
 
 Using the Maven-Embedded Jetty method above is convenient, but it is not a good solution if you want to leave the server running in the background.
 
-Most people who are using HAPI FHIR JPA as a server that is accessible to other people (whether internally on your network or publicly hosted) will do so using an Application Server, such as [Apache Tomcat](http://tomcat.apache.org/) or [Jetty](https://www.eclipse.org/jetty/). Note that any Servlet 3.0+ compatible Web Container will work (e.g. Wildfly, Websphere, etc.).
+Most people who are using HAPI FHIR JPA as a server that is accessible to other people (whether internally on your network or publically hosted) will do so using an Application Server, such as [Apache Tomcat](http://tomcat.apache.org/) or [Jetty](https://www.eclipse.org/jetty/). Note that any Servlet 3.0+ compatible Web Container will work (e.g Wildfly, Websphere, etc.).
 
 Tomcat is very popular, so it is a good choice simply because you will be able to find many tutorials online. Jetty is a great alternative due to its fast startup time and good overall performance.
 
@@ -402,7 +480,7 @@ Again, browse to the following link to use the server (note that the port 8080 m
 
 You will then be able to access the JPA server e.g. using http://localhost:8080/fhir/metadata.
 
-If you would like it to be hosted at e.g. hapi-fhir-jpaserver, e.g. http://localhost:8080/hapi-fhir-jpaserver/ or http://localhost:8080/hapi-fhir-jpaserver/fhir/metadata - then rename the WAR file to ```hapi-fhir-jpaserver.war``` and adjust the overlay configuration accordingly e.g.
+If you would like it to be hosted at eg. hapi-fhir-jpaserver, eg. http://localhost:8080/hapi-fhir-jpaserver/ or http://localhost:8080/hapi-fhir-jpaserver/fhir/metadata - then rename the WAR file to ```hapi-fhir-jpaserver.war``` and adjust the overlay configuration accordingly e.g.
 
 ```yaml
     tester:
@@ -525,7 +603,7 @@ Set `hapi.fhir.store_resource_in_lucene_index_enabled` in the [application.yaml]
 
 ## Changing cached search results time
 
-It is possible to change the cached search results time. The option `reuse_cached_search_results_millis` in the [application.yaml](https://github.com/hapifhir/hapi-fhir-jpaserver-starter/blob/master/src/main/resources/application.yaml) is 6000 milliseconds by default.
+It is possible to change the cached search results time. The option `reuse_cached_search_results_millis` in the [application.yaml](https://github.com/hapifhir/hapi-fhir-jpaserver-starter/blob/master/src/main/resources/application.yaml) is 6000 miliseconds by default.
 Set `reuse_cached_search_results_millis: -1` in the [application.yaml](https://github.com/hapifhir/hapi-fhir-jpaserver-starter/blob/master/src/main/resources/application.yaml) file to ignore the cache time every search.
 
 ## Build the distroless variant of the image (for lower footprint and improved security)
