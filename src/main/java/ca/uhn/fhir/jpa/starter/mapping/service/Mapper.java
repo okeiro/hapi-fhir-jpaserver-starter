@@ -32,6 +32,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -819,7 +820,8 @@ public class Mapper {
 				List<GenericSegment> segments;
 				if (hl7v2Object instanceof Message) {
 					if (path.getFieldRepetition() != null) {
-						segments = List.of((GenericSegment) ((Message) hl7v2Object).get(path.getSegment(), path.getSegmentRepetition()));
+						int segmentRepetition = path.getSegmentRepetition() != null ? path.getSegmentRepetition() : 0;
+						segments = List.of((GenericSegment) ((Message) hl7v2Object).get(path.getSegment(), segmentRepetition));
 					} else {
 						segments = Arrays.stream(((Message) hl7v2Object).getAll(path.getSegment())).map(s -> (GenericSegment) s).collect(Collectors.toList());
 					}
@@ -1153,20 +1155,43 @@ public class Mapper {
 							: null);
 				case DATEOP:
 					String dateSource = getParamStringNoNull(context.getVariables(), context.getTarget().getParameter().get(0), context.getTarget().toString());
-					String dateFormat = getParamStringNoNull(context.getVariables(), context.getTarget().getParameter().get(1), context.getTarget().toString());
+					String inputFormat = getParamStringNoNull(context.getVariables(), context.getTarget().getParameter().get(1), context.getTarget().toString());
+					String outputFormatOrType = (context.getTarget().getParameter().size() > 2) ? getParamStringNoNull(context.getVariables(), context.getTarget().getParameter().get(2), context.getTarget().toString()) : null;
+					boolean forceInstant = outputFormatOrType != null && "instant".equalsIgnoreCase(outputFormatOrType.trim());
 
-					DateTimeFormatter formatter = DateTimeFormatter.ofPattern(dateFormat);
+					DateTimeFormatter outputFormatter = (!forceInstant && outputFormatOrType != null)
+						? DateTimeFormatter.ofPattern(outputFormatOrType)
+						: null;
+
+					DateTimeFormatter inputFormatter = DateTimeFormatter.ofPattern(inputFormat);
+
 					try {
-						// If format includes time, parse as LocalDateTime
-						LocalDateTime ldt = LocalDateTime.parse(dateSource, formatter);
-						return new DateTimeType(Date.from(ldt.atZone(ZoneId.systemDefault()).toInstant()));
+						LocalDateTime ldt = LocalDateTime.parse(dateSource, inputFormatter);
+						if (forceInstant) {
+							return new InstantType(Date.from(ldt.atZone(ZoneOffset.UTC).toInstant()));
+						}
+						if (outputFormatter != null) {
+							String formatted = ldt.atZone(ZoneOffset.UTC).format(outputFormatter);
+							return new DateTimeType(formatted);
+						}
+						return new DateTimeType(Date.from(ldt.atZone(ZoneOffset.UTC).toInstant()));
+
 					} catch (Exception e1) {
 						try {
-							// If format is date-only, parse as LocalDate
-							LocalDate ld = LocalDate.parse(dateSource, formatter);
-							return new DateType(Date.from(ld.atStartOfDay(ZoneId.systemDefault()).toInstant()));
+							LocalDate ld = LocalDate.parse(dateSource, inputFormatter);
+							if (forceInstant) {
+								return new InstantType(Date.from(ld.atStartOfDay(ZoneOffset.UTC).toInstant()));
+							}
+							if (outputFormatter != null) {
+								String formatted = ld.atStartOfDay(ZoneOffset.UTC).format(outputFormatter);
+								return new DateTimeType(formatted);
+							}
+							return new DateType(Date.from(ld.atStartOfDay(ZoneOffset.UTC).toInstant()));
+
 						} catch (Exception e2) {
-							throw new IllegalArgumentException("Could not parse date with the given format", e2);
+							throw new IllegalArgumentException(
+								String.format("Could not parse date '%s' with input format '%s'",
+									dateSource, inputFormat), e2);
 						}
 					}
 				case ESCAPE:
