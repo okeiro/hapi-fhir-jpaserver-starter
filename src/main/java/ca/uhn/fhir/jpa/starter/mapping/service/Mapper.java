@@ -2,15 +2,15 @@ package ca.uhn.fhir.jpa.starter.mapping.service;
 
 import ca.uhn.fhir.context.FhirContext;
 import ca.uhn.fhir.jpa.starter.mapping.model.*;
+import ca.uhn.fhir.jpa.starter.mapping.model.Variable;
 import ca.uhn.fhir.parser.IParser;
 import ca.uhn.fhir.rest.api.EncodingEnum;
 import ca.uhn.fhir.rest.server.exceptions.InvalidRequestException;
 import ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException;
 import ca.uhn.hl7v2.HL7Exception;
-import ca.uhn.hl7v2.model.GenericComposite;
-import ca.uhn.hl7v2.model.GenericSegment;
-import ca.uhn.hl7v2.model.Message;
-import ca.uhn.hl7v2.model.Varies;
+import ca.uhn.hl7v2.model.*;
+import ca.uhn.hl7v2.model.Group;
+import ca.uhn.hl7v2.parser.ModelClassFactory;
 import org.apache.commons.csv.CSVRecord;
 import org.hl7.fhir.exceptions.DefinitionException;
 import org.hl7.fhir.exceptions.FHIRException;
@@ -19,6 +19,7 @@ import org.hl7.fhir.r4.context.IWorkerContext;
 import org.hl7.fhir.r4.fhirpath.ExpressionNode;
 import org.hl7.fhir.r4.fhirpath.FHIRPathEngine;
 import org.hl7.fhir.r4.model.*;
+import org.hl7.fhir.r4.model.Type;
 import org.hl7.fhir.r4.utils.StructureMapUtilities;
 import org.hl7.fhir.utilities.TerminologyServiceOptions;
 import org.hl7.fhir.utilities.Utilities;
@@ -806,7 +807,7 @@ public class Mapper {
 	 * @return A list of Base items resulting from the processing, or null if the processing is skipped.
 	 * @throws InvalidRequestException If there's an issue with the mapping rules or the structure of the HL7v2 data.
 	 */
-	private List<Object> processHL7v2Object(MappingContext context, Object hl7v2Object) {
+	List<Object> processHL7v2Object(MappingContext context, Object hl7v2Object) {
 		List<Object> items = new ArrayList<>();
 		boolean skip = false;
 
@@ -823,21 +824,24 @@ public class Mapper {
 						int segmentRepetition = path.getSegmentRepetition() != null ? path.getSegmentRepetition() : 0;
 						segments = List.of((GenericSegment) ((Message) hl7v2Object).get(path.getSegment(), segmentRepetition));
 					} else {
-						segments = Arrays.stream(((Message) hl7v2Object).getAll(path.getSegment())).map(s -> (GenericSegment) s).collect(Collectors.toList());
+						segments = Arrays.stream(((Message) hl7v2Object).getAll(path.getSegment()))
+							.map(this::toGenericSegment)
+							.collect(Collectors.toList());
 					}
 				} else {
-					segments = List.of((GenericSegment) hl7v2Object);
+					segments = List.of(toGenericSegment(hl7v2Object));
 				}
 
 				if (path.getField() == null) {
-					//No check of condition currently
 					items.addAll(segments);
 				} else {
 					List<Varies> fields;
-					if (path.getFieldRepetition()!= null) {
+					if (path.getFieldRepetition() != null) {
 						fields = List.of((Varies) segments.get(0).getField(path.getField(), path.getFieldRepetition()));
 					} else {
-						fields = Arrays.stream(segments.get(0).getField(path.getField())).map(t -> (Varies) t).collect(Collectors.toList());
+						fields = Arrays.stream(segments.get(0).getField(path.getField()))
+							.map(t -> (Varies) t)
+							.collect(Collectors.toList());
 					}
 
 					String elementStringValue = null;
@@ -874,7 +878,6 @@ public class Mapper {
 							skip = true;
 							break;
 						}
-
 						items.add(item);
 					} else {
 						logger.info("Field not found in HL7v2 source : " + source.getElement());
@@ -886,6 +889,28 @@ public class Mapper {
 		}
 		return skip ? new ArrayList<>() : items;
 	}
+
+	/**
+	 * Converts an object (GenericSegment or typed Segment) to GenericSegment
+	 */
+	private GenericSegment toGenericSegment(Object obj) {
+		if (obj instanceof GenericSegment) {
+			return (GenericSegment) obj;
+		}
+		if (obj instanceof Segment) {
+			Segment seg = (Segment) obj;
+			try {
+				String encoded = seg.encode();
+				GenericSegment gen = new GenericSegment(seg.getParent(), seg.getName());
+				gen.parse(encoded);
+				return gen;
+			} catch (HL7Exception e) {
+				logger.info("Failed to convert segment " + seg.getName() + " to GenericSegment", e);
+			}
+		}
+		throw new IllegalArgumentException("Unsupported HL7v2 object type: " + obj.getClass());
+	}
+
 
 	/**
 	 * Get a FHIR Item from a CSV extracted string.
