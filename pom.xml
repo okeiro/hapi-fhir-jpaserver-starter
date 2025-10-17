@@ -5,7 +5,7 @@
 
     <properties>
         <java.version>17</java.version>
-        <hapi.fhir.jpa.server.starter.revision>2</hapi.fhir.jpa.server.starter.revision>
+        <hapi.fhir.jpa.server.starter.revision>3</hapi.fhir.jpa.server.starter.revision>
         <clinical-reasoning.version>3.26.0</clinical-reasoning.version>
     </properties>
 
@@ -24,7 +24,7 @@
     </parent>
 
     <artifactId>hapi-fhir-jpaserver-starter</artifactId>
-    <version>${project.parent.version}-${hapi.fhir.jpa.server.starter.revision}</version>
+    <version>mapping-2.0.0</version>
     <packaging>war</packaging>
 
     <prerequisites>
