@@ -2,6 +2,8 @@ package ca.uhn.fhir.jpa.starter.mapping.service;
 
 import ca.uhn.fhir.context.FhirContext;
 import ca.uhn.fhir.context.support.DefaultProfileValidationSupport;
+import ca.uhn.fhir.jpa.api.dao.IFhirResourceDao;
+import ca.uhn.fhir.rest.client.api.IGenericClient;
 import org.apache.jena.ext.xerces.impl.dv.util.Base64;
 import org.hl7.fhir.common.hapi.validation.support.PrePopulatedValidationSupport;
 import org.hl7.fhir.common.hapi.validation.support.ValidationSupportChain;
@@ -20,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class MapperTestJsonToFHIR {
     private ValidationSupportChain validationSupport;
     private IWorkerContext hapiContext;
+	private IFhirResourceDao<StructureMap> structureMapDao;
     private final String json = "{\"firstName\": [\"John\", \"Jack\"],\"lastName\": \"Doe\"}";
 
     @Test
@@ -32,7 +35,8 @@ public class MapperTestJsonToFHIR {
 
         FHIRPathEngine fhirPathEngine = new FHIRPathEngine(hapiContext);
 
-        Mapper mapper = new Mapper(hapiContext, fhirPathEngine, null);
+		  IGenericClient clientStructureMap = null;
+        Mapper mapper = new Mapper(hapiContext, fhirPathEngine, null, structureMapDao, clientStructureMap);
 
         Parameters.ParametersParameterComponent param = new Parameters.ParametersParameterComponent();
         param.setName("input");
@@ -51,6 +55,7 @@ public class MapperTestJsonToFHIR {
 
     private StructureMap getStructureMap() {
         StructureMap structureMap = new StructureMap();
+		  structureMap.setUrl("http://example.org/base");
 
         StructureMap.StructureMapGroupComponent group = new StructureMap.StructureMapGroupComponent();
         group.setName("main");

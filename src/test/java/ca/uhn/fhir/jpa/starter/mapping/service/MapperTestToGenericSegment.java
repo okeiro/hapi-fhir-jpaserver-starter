@@ -1,10 +1,13 @@
 package ca.uhn.fhir.jpa.starter.mapping.service;
 
+import ca.uhn.fhir.jpa.api.dao.IFhirResourceDao;
+import ca.uhn.fhir.rest.client.api.IGenericClient;
 import ca.uhn.hl7v2.HL7Exception;
 import ca.uhn.hl7v2.model.GenericSegment;
 import ca.uhn.hl7v2.model.Message;
 import ca.uhn.hl7v2.model.Segment;
 import ca.uhn.hl7v2.parser.PipeParser;
+import org.hl7.fhir.r4.model.StructureMap;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -13,7 +16,9 @@ import static org.mockito.Mockito.when;
 
 class MapperTestToGenericSegment {
 
-	private final Mapper mapper = new Mapper(null, null, null);
+	private IFhirResourceDao<StructureMap> structureMapDao;
+	IGenericClient clientStructureMap = null;
+	private final Mapper mapper = new Mapper(null, null, null, structureMapDao, clientStructureMap);
 
 	private final String siuS12Message =
 		"MSH|^~\\&|TestSystem|TestFacility|ReceiverApp|ReceiverFacility|20251001120000||SIU^S12^SIU_S12|MSG00001|P|2.5.1|||||FRA|UTF-8\r"
