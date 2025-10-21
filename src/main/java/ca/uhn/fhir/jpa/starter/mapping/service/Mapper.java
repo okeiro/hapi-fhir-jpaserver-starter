@@ -1,16 +1,18 @@
 package ca.uhn.fhir.jpa.starter.mapping.service;
 
 import ca.uhn.fhir.context.FhirContext;
+import ca.uhn.fhir.jpa.api.dao.IFhirResourceDao;
+import ca.uhn.fhir.jpa.searchparam.SearchParameterMap;
 import ca.uhn.fhir.jpa.starter.mapping.model.*;
 import ca.uhn.fhir.jpa.starter.mapping.model.Variable;
 import ca.uhn.fhir.parser.IParser;
-import ca.uhn.fhir.rest.api.EncodingEnum;
+import ca.uhn.fhir.rest.api.server.IBundleProvider;
+import ca.uhn.fhir.rest.client.api.IGenericClient;
+import ca.uhn.fhir.rest.param.UriParam;
 import ca.uhn.fhir.rest.server.exceptions.InvalidRequestException;
 import ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException;
 import ca.uhn.hl7v2.HL7Exception;
 import ca.uhn.hl7v2.model.*;
-import ca.uhn.hl7v2.model.Group;
-import ca.uhn.hl7v2.parser.ModelClassFactory;
 import org.apache.commons.csv.CSVRecord;
 import org.hl7.fhir.exceptions.DefinitionException;
 import org.hl7.fhir.exceptions.FHIRException;
@@ -21,7 +23,6 @@ import org.hl7.fhir.r4.fhirpath.FHIRPathEngine;
 import org.hl7.fhir.r4.model.*;
 import org.hl7.fhir.r4.model.Type;
 import org.hl7.fhir.r4.utils.StructureMapUtilities;
-import org.hl7.fhir.utilities.TerminologyServiceOptions;
 import org.hl7.fhir.utilities.Utilities;
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -32,7 +33,6 @@ import org.slf4j.LoggerFactory;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -90,131 +90,96 @@ public class Mapper {
 	private final IWorkerContext worker;
 	private final FHIRPathEngine fhirPathEngine;
 	private final StructureMapUtilities.ITransformerServices services;
+	private final IFhirResourceDao<StructureMap> structureMapDao;
+	private final IGenericClient clientStructureMap;
 
 	public Mapper(IWorkerContext worker, FHIRPathEngine fhirPathEngine,
-					  StructureMapUtilities.ITransformerServices services) {
+					  StructureMapUtilities.ITransformerServices services, IFhirResourceDao<StructureMap> structureMapDao, IGenericClient clientStructureMap) {
 		this.worker = worker;
 		this.fhirPathEngine = fhirPathEngine;
 		this.services = services;
+		this.structureMapDao = structureMapDao;
+		this.clientStructureMap = clientStructureMap;
 	}
 
 	public Parameters map(StructureMap structureMap, Parameters parameters) {
 		logger.info("Start Mapping using map : " + structureMap.getUrl());
-		logger.warn("/!\\ Only one group from your StructureMap will be mapped /!\\");
 
-		if (structureMap.getGroup().isEmpty()) {
+		StructureMap resolved = resolveImports(structureMap, new HashSet<>());
+
+		if (resolved.getGroup().isEmpty()) {
 			throw new InvalidRequestException("StructureMap.group is required !");
 		}
-		StructureMap.StructureMapGroupComponent group = structureMap.getGroup().get(0);
-
-		Variables variables = new Variables();
-		//Try to find inputs in Parameters resource
-		for (StructureMap.StructureMapGroupInputComponent input : group.getInput()) {
-			String inputName = input.getName();
-
-			Binary parameter = (Binary) parameters.getParameter("input").getPart().stream()
-				.filter(p -> inputName.equals(p.getName())).findFirst().orElse(new Parameters.ParametersParameterComponent())
-				.getResource();
-
-			// If no resource is found for a source input, then return an Exception
-			if (parameter == null && StructureMap.StructureMapInputMode.SOURCE.equals(input.getMode())) {
-				throw new InvalidRequestException(String.format("Missing input named '%s' in parameters !", inputName));
-			} else if (parameter != null) {
-				// If the Input is of type CSV, parse it (only for sources)
-				if ("CSV".equals(input.getType())) {
-					if (CSV_MIME_TYPE.equals(parameter.getContentType())) {
-						variables.add(input.getMode().equals(StructureMap.StructureMapInputMode.SOURCE) ? INPUT : OUTPUT,
-							inputName, new CSVRecords(parseCSVData(parameter.getContentAsBase64())));
-					} else {
-						throw new InvalidRequestException(String.format("Input named '%s' shall be a CSV (use mimetype '%s') !",
-							inputName, CSV_MIME_TYPE));
-					}
-				} else if ("JSON".equals(input.getType())) {
-					if (JSON_MIME_TYPE.equals(parameter.getContentType())) {
-						variables.add(input.getMode().equals(StructureMap.StructureMapInputMode.SOURCE) ? INPUT : OUTPUT,
-							inputName, parseJsonData(parameter.getContentAsBase64()));
-					} else {
-						throw new InvalidRequestException(String.format("Input named '%s' shall be a JSON (use mimetype '%s') !",
-							inputName, JSON_MIME_TYPE));
-					}
-				} else if ("HL7v2".equals(input.getType())) {
-					if (HL7v2_MIME_TYPE.equals(parameter.getContentType())) {
-						variables.add(input.getMode().equals(StructureMap.StructureMapInputMode.SOURCE) ? INPUT : OUTPUT,
-							inputName, HL7v2DataReader.parseData(parameter.getContentAsBase64()));
-					} else {
-						throw new InvalidRequestException(String.format("Input named '%s' shall be an HL7v2 Document (use mimetype '%s') !",
-							inputName, HL7v2_MIME_TYPE));
-					}
-				} else if ("XML".equals(input.getType())) {
-					if (XML_MIME_TYPE.equals(parameter.getContentType())) {
-						variables.add(input.getMode().equals(StructureMap.StructureMapInputMode.SOURCE) ? INPUT : OUTPUT,
-							inputName, parseXMLData(parameter.getContentAsBase64()));
-					} else {
-						throw new InvalidRequestException(String.format("Input named '%s' shall be a XML (use mimetype '%s') !",
-							inputName, XML_MIME_TYPE));
-					}
-
-				}
-				// Else try to parse as FHIR resource
-				else {
-					String stringContent = new String(Base64.getDecoder().decode(parameter.getContentAsBase64()), StandardCharsets.UTF_8);
-					EncodingEnum encoding = EncodingEnum.detectEncoding(stringContent);
-					IParser parser;
-
-					switch (encoding) {
-						case JSON:
-							parser = FhirContext.forCached(R4).newJsonParser();
-							break;
-						case RDF:
-							parser = FhirContext.forCached(R4).newRDFParser();
-							break;
-						case XML:
-						default:
-							parser = FhirContext.forCached(R4).newXmlParser();
-							break;
-					}
-
-					try {
-						IBaseResource resource = parser.parseResource(stringContent);
-						variables.add(input.getMode().equals(StructureMap.StructureMapInputMode.SOURCE) ? INPUT : OUTPUT,
-							inputName, resource);
-					} catch (Exception e) {
-						throw new InvalidRequestException(String.format("Could not parse resource for input named '%s' !", inputName));
-					}
-				}
-			} else if (StructureMap.StructureMapInputMode.TARGET.equals(input.getMode())) {
-				switch (input.getType()) {
-					case "CSV":
-						variables.add(OUTPUT, inputName, new CSVBuilder());
-						break;
-					case "JSON":
-						variables.add(OUTPUT, inputName, new JSONBuilder());
-						break;
-					default:
-						variables.add(OUTPUT, inputName, ResourceFactory.createResourceOrType(input.getType()));
-						break;
-				}
-			}
-		}
-
-		executeGroup(new MappingContext(structureMap, group, variables), true);
 
 		Parameters result = new Parameters();
-		variables.getOutputs().stream().forEach(v -> {
-			String type = group.getInput().stream().filter(i -> i.getName().equals(v.getName()))
-				.map(StructureMap.StructureMapGroupInputComponent::getType)
-				.findFirst().orElse("Resource");
 
-			result.addParameter(new Parameters.ParametersParameterComponent()
-				.setName(v.getName()).setResource(new Binary()
-					.setContentType(getContentType(type))
-					.setContentAsBase64(Base64.getEncoder()
-						.encodeToString(
-							v.getObject() instanceof IBaseResource
-								? FhirContext.forCached(R4).newJsonParser().encodeResourceToString((IBaseResource) v.getObject()).getBytes(StandardCharsets.UTF_8)
-								: v.getObject().toString().getBytes(StandardCharsets.UTF_8)))));
-		});
+		for (StructureMap.StructureMapGroupComponent group : resolved.getGroup()) {
+			Variables variables = new Variables();
+
+			for (StructureMap.StructureMapGroupInputComponent input : group.getInput()) {
+				String inputName = input.getName();
+
+				Binary parameter = (Binary) parameters.getParameter("input").getPart().stream()
+					.filter(p -> inputName.equals(p.getName()))
+					.findFirst()
+					.map(p -> p.getResource())
+					.orElse(null);
+
+				if (parameter == null && StructureMap.StructureMapInputMode.SOURCE.equals(input.getMode())) {
+					throw new InvalidRequestException(String.format("Missing input named '%s' in parameters !", inputName));
+				}
+
+				if (parameter != null) {
+					Object parsedObject = parseInput(parameter, input.getType());
+					variables.add(input.getMode().equals(StructureMap.StructureMapInputMode.SOURCE) ? INPUT : OUTPUT, inputName, parsedObject);
+				} else if (StructureMap.StructureMapInputMode.TARGET.equals(input.getMode())) {
+					variables.add(OUTPUT, inputName, createEmptyOutput(input.getType()));
+				}
+			}
+
+			executeGroup(new MappingContext(resolved, group, variables), true);
+
+			variables.getOutputs().stream().forEach(v -> {
+				String type = group.getInput().stream().filter(i -> i.getName().equals(v.getName()))
+					.map(StructureMap.StructureMapGroupInputComponent::getType)
+					.findFirst().orElse("Resource");
+
+					result.addParameter(new Parameters.ParametersParameterComponent()
+						.setName(v.getName())
+						.setResource(new Binary()
+							.setContentType(getContentType(type))
+							.setContentAsBase64(Base64.getEncoder().encodeToString(serializeObject(v.getObject(), type)))));
+			});
+		}
 		return result;
+	}
+
+	private Object parseInput(Binary parameter, String type) {
+		switch (type) {
+			case "CSV": return new CSVRecords(parseCSVData(parameter.getContentAsBase64()));
+			case "JSON": return parseJsonData(parameter.getContentAsBase64());
+			case "HL7v2": return HL7v2DataReader.parseData(parameter.getContentAsBase64());
+			case "XML": return parseXMLData(parameter.getContentAsBase64());
+			default:
+				String stringContent = new String(Base64.getDecoder().decode(parameter.getContentAsBase64()), StandardCharsets.UTF_8);
+				IParser parser = FhirContext.forCached(R4).newJsonParser();
+				return parser.parseResource(stringContent);
+		}
+	}
+
+	private Object createEmptyOutput(String type) {
+		switch (type) {
+			case "CSV": return new CSVBuilder();
+			case "JSON": return new JSONBuilder();
+			default: return ResourceFactory.createResourceOrType(type);
+		}
+	}
+
+	private byte[] serializeObject(Object obj, String type) {
+		if (obj instanceof IBaseResource) {
+			return FhirContext.forCached(R4).newJsonParser().encodeResourceToString((IBaseResource) obj).getBytes(StandardCharsets.UTF_8);
+		}
+		return obj.toString().getBytes(StandardCharsets.UTF_8);
 	}
 
 	/**
@@ -291,8 +256,7 @@ public class Mapper {
 						MappingContext childContext = new MappingContext(context.getStructureMap(), context.getGroup(), variables);
 						executeDependency(childContext, dependent);
 					}
-				}
-				else if (context.getRule().getSource().size() == 1 && context.getRule().getSourceFirstRep().hasVariable()
+				} else if (context.getRule().getSource().size() == 1 && context.getRule().getSourceFirstRep().hasVariable()
 					&& context.getRule().getTarget().size() == 1 && context.getRule().getTargetFirstRep().hasVariable()
 					&& context.getRule().getTargetFirstRep().getTransform() == StructureMap.StructureMapTransform.CREATE
 					&& !context.getRule().getTargetFirstRep().hasParameter()) {
@@ -329,8 +293,7 @@ public class Mapper {
 					MappingContext childContext = new MappingContext(context.getStructureMap(), context.getGroup(), context.getVariables());
 					executeDependency(childContext, dependent);
 				}
-			}
-			else if (context.getRule().getSource().size() == 1 && context.getRule().getSourceFirstRep().hasVariable()
+			} else if (context.getRule().getSource().size() == 1 && context.getRule().getSourceFirstRep().hasVariable()
 				&& context.getRule().getTarget().size() == 1 && context.getRule().getTargetFirstRep().hasVariable()
 				&& context.getRule().getTargetFirstRep().getTransform() == StructureMap.StructureMapTransform.CREATE
 				&& !context.getRule().getTargetFirstRep().hasParameter()) {
@@ -552,9 +515,9 @@ public class Mapper {
 
 		//Only message or can it be segments ?
 		if (sourceObject instanceof Message) {
-			items = processHL7v2Object(context, (Message) sourceObject);
+			items = processHL7v2Object(context, sourceObject);
 		} else if (sourceObject instanceof GenericSegment) {
-			items = processHL7v2Object(context, (GenericSegment) sourceObject);
+			items = processHL7v2Object(context, sourceObject);
 		} else {
 			items = new ArrayList<>();
 		}
@@ -802,7 +765,7 @@ public class Mapper {
 	/**
 	 * Processes a HL7v2 object according to the mapping context.
 	 *
-	 * @param context    the Mapping context.
+	 * @param context     the Mapping context.
 	 * @param hl7v2Object The HL7v2 object to process.
 	 * @return A list of Base items resulting from the processing, or null if the processing is skipped.
 	 * @throws InvalidRequestException If there's an issue with the mapping rules or the structure of the HL7v2 data.
@@ -897,8 +860,7 @@ public class Mapper {
 		if (obj instanceof GenericSegment) {
 			return (GenericSegment) obj;
 		}
-		if (obj instanceof Segment) {
-			Segment seg = (Segment) obj;
+		if (obj instanceof Segment seg) {
 			try {
 				String encoded = seg.encode();
 				GenericSegment gen = new GenericSegment(seg.getParent(), seg.getName());
@@ -1009,7 +971,7 @@ public class Mapper {
 		Object targetedElement = null;
 		if (context.getTarget().hasContext()) {
 			targetedElement = context.getVariables().get(OUTPUT, context.getTarget().getContext());
-			if(targetedElement == null) {
+			if (targetedElement == null) {
 				targetedElement = context.getVariables().get(INPUT, context.getTarget().getContext());
 			}
 			if (targetedElement == null || !context.getTarget().hasElement()) {
@@ -1057,7 +1019,7 @@ public class Mapper {
 				String elementName = elementVariable.castToString(elementVariable).getValue();
 
 				((CSVBuilder) targetedElement).addValue(elementName,
-					result != null ? result.castToString(result).getValue() : "" );
+					result != null ? result.castToString(result).getValue() : "");
 			}
 		} else if (targetedElement instanceof JSONBuilder) {
 			String element = context.getTarget().getElement();
@@ -1066,7 +1028,7 @@ public class Mapper {
 				result = runTransform(context, null, atRoot);
 			}
 
-			if  (result != null) {
+			if (result != null) {
 				((JSONBuilder) targetedElement).putByPath(element, result.castToString(result).getValue());
 			}
 		}
@@ -1962,6 +1924,211 @@ public class Mapper {
 		public SourceElementComponentWrapper(ConceptMap.ConceptMapGroupComponent group, ConceptMap.SourceElementComponent comp) {
 			this.group = group;
 			this.comp = comp;
+		}
+	}
+
+	/**
+	 * Resolves and merges all imports for a given StructureMap.
+	 * Supports recursive imports and conflict resolution (local overrides imported).
+	 */
+	StructureMap resolveImports(StructureMap original, Set<String> visited) {
+		if (original == null || original.getUrl() == null || original.getUrl().isEmpty()) {
+			throw new InvalidRequestException("StructureMap URL cannot be null");
+		}
+
+		if (visited.contains(original.getUrl())) {
+			return original;
+		}
+		visited.add(original.getUrl());
+
+		StructureMap resolvedMap = original.copy();
+
+		for (UriType importUrl : original.getImport()) {
+			String importCanonical = importUrl.getValue();
+			StructureMap importedMap = fetchStructureMapByUrl(importCanonical);
+
+			if (importedMap == null) {
+				throw new InvalidRequestException("Unable to find imported StructureMap: " + importCanonical);
+			}
+
+			importedMap = resolveImports(importedMap, visited);
+
+			mergeStructureMaps(resolvedMap, importedMap);
+		}
+		return resolvedMap;
+	}
+
+	/**
+	 * Retrieves a StructureMap by canonical URL.
+	 * If a remote client is available, it queries the remote FHIR server.
+	 * Otherwise, it searches the local repository (DAO).
+	 */
+	StructureMap fetchStructureMapByUrl(String url) {
+		if (url == null || url.isBlank()) {
+			throw new InvalidRequestException("StructureMap URL cannot be null or empty");
+		}
+
+		StructureMap structureMap = null;
+
+		if (clientStructureMap != null) {
+			try {
+				structureMap = clientStructureMap
+					.search()
+					.forResource(StructureMap.class)
+					.where(StructureMap.URL.matches().value(url))
+					.returnBundle(org.hl7.fhir.r4.model.Bundle.class)
+					.execute()
+					.getEntry()
+					.stream()
+					.filter(e -> e.getResource() instanceof StructureMap)
+					.map(e -> (StructureMap) e.getResource())
+					.findFirst()
+					.orElse(null);
+
+				if (structureMap != null) {
+					logger.info("Fetched StructureMap from remote endpoint: " + url);
+				} else {
+					logger.info("No StructureMap found remotely for URL: " + url + " — falling back to local DAO.");
+				}
+			} catch (Exception e) {
+				logger.info("Remote StructureMap fetch failed for " + url + ": " + e.getMessage());
+			}
+		} else {
+			if (structureMapDao == null) {
+				throw new InvalidRequestException("No DAO available to resolve StructureMap: " + url);
+			}
+
+			SearchParameterMap searchMap = new SearchParameterMap().add("url", new UriParam(url));
+			IBundleProvider search = structureMapDao.search(searchMap);
+
+			if (search == null || search.size() == 0) {
+				throw new InvalidRequestException("StructureMap not found locally for URL: " + url);
+			}
+
+			if (search.size() > 1) {
+				logger.info("Multiple StructureMaps found locally for " + url + " — using the first one.");
+			}
+
+			List<IBaseResource> resources = search.getResources(0, 1);
+			structureMap = (StructureMap) resources.get(0);
+		}
+		return structureMap;
+	}
+
+	/**
+	 * Merges imported StructureMap into the base one.
+	 * Local definitions override imported ones.
+	 */
+	void mergeStructureMaps(StructureMap base, StructureMap imported) {
+		mergeVariables(base.getContained(), imported.getContained());
+
+		for (StructureMap.StructureMapGroupComponent importedGroup : imported.getGroup()) {
+			Optional<StructureMap.StructureMapGroupComponent> existingGroupOpt = base.getGroup().stream()
+				.filter(g -> g.getName().equals(importedGroup.getName())
+					&& sameGroupSignature(g, importedGroup))
+				.findFirst();
+
+			if (existingGroupOpt.isPresent()) {
+				mergeGroups(existingGroupOpt.get(), importedGroup);
+			} else {
+				base.getGroup().add(0, importedGroup.copy());
+			}
+		}
+
+		if (!base.hasDescription() && imported.hasDescription()) {
+			base.setDescription(imported.getDescription());
+		}
+	}
+
+	/**
+	 * Compares groups by name and input/output types (signature)
+	 */
+	boolean sameGroupSignature(StructureMap.StructureMapGroupComponent g1, StructureMap.StructureMapGroupComponent g2) {
+		if (!g1.getName().equals(g2.getName())) return false;
+		if (g1.getInput().size() != g2.getInput().size()) return false;
+		for (int i = 0; i < g1.getInput().size(); i++) {
+			if (!Objects.equals(g1.getInput().get(i).getType(), g2.getInput().get(i).getType())) return false;
+		}
+		return true;
+	}
+
+	/**
+	 * Merges rules of two groups.
+	 * Local rules override imported rules with the same name.
+	 * Keeps the order (imported first, local after).
+	 */
+	private void mergeGroups(StructureMap.StructureMapGroupComponent baseGroup, StructureMap.StructureMapGroupComponent importedGroup) {
+		for (StructureMap.StructureMapGroupRuleComponent importedRule : importedGroup.getRule()) {
+			Optional<StructureMap.StructureMapGroupRuleComponent> existingRuleOpt = baseGroup.getRule().stream()
+				.filter(r -> r.getName().equals(importedRule.getName()))
+				.findFirst();
+
+			if (existingRuleOpt.isPresent()) {
+				StructureMap.StructureMapGroupRuleComponent existingRule = existingRuleOpt.get();
+				mergeRules(existingRule, importedRule);
+			} else {
+				baseGroup.getRule().add(0, importedRule.copy());
+			}
+		}
+	}
+
+	/**
+	 * Merges two rules recursively.
+	 * Local rule has priority; imported subrules are added if not overridden.
+	 */
+	void mergeRules(StructureMap.StructureMapGroupRuleComponent baseRule, StructureMap.StructureMapGroupRuleComponent importedRule) {
+
+		if (baseRule.getSource().isEmpty() && !importedRule.getSource().isEmpty()) {
+			baseRule.getSource().addAll(importedRule.getSource().stream().map(StructureMap.StructureMapGroupRuleSourceComponent::copy).toList());
+		}
+		if (baseRule.getTarget().isEmpty() && !importedRule.getTarget().isEmpty()) {
+			baseRule.getTarget().addAll(importedRule.getTarget().stream().map(StructureMap.StructureMapGroupRuleTargetComponent::copy).toList());
+		}
+
+		for (StructureMap.StructureMapGroupRuleComponent importedSubRule : importedRule.getRule()) {
+			Optional<StructureMap.StructureMapGroupRuleComponent> existingSubRuleOpt = baseRule.getRule().stream()
+				.filter(r -> r.getName().equals(importedSubRule.getName()))
+				.findFirst();
+
+			if (existingSubRuleOpt.isPresent()) {
+				mergeRules(existingSubRuleOpt.get(), importedSubRule);
+			} else {
+				baseRule.getRule().add(importedSubRule.copy());
+			}
+		}
+
+		for (StructureMap.StructureMapGroupRuleDependentComponent importedDependent : importedRule.getDependent()) {
+			boolean exists = baseRule.getDependent().stream()
+				.anyMatch(dep -> dep.getName().equals(importedDependent.getName()));
+			if (!exists) {
+				baseRule.getDependent().add(importedDependent.copy());
+			}
+		}
+	}
+
+	/**
+	 * Merge contained resources (variables, structures, etc.) from imported maps into the base one.
+	 * Locally defined variables (baseContained) have priority.
+	 */
+	void mergeVariables(List<Resource> baseContained, List<Resource> importedContained) {
+		if (importedContained == null || importedContained.isEmpty()) {
+			return;
+		}
+		if (baseContained == null) {
+			baseContained = new ArrayList<>();
+		}
+
+		for (Resource importedResource : importedContained) {
+			boolean alreadyExists = baseContained.stream()
+				.anyMatch(existing ->
+					existing.getIdElement() != null &&
+						importedResource.getIdElement() != null &&
+						existing.getIdElement().getIdPart().equals(importedResource.getIdElement().getIdPart())
+				);
+
+			if (!alreadyExists) {
+				baseContained.add(importedResource.copy());
+			}
 		}
 	}
 }

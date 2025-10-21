@@ -2,6 +2,8 @@ package ca.uhn.fhir.jpa.starter.mapping.service;
 
 import ca.uhn.fhir.context.FhirContext;
 import ca.uhn.fhir.context.support.DefaultProfileValidationSupport;
+import ca.uhn.fhir.jpa.api.dao.IFhirResourceDao;
+import ca.uhn.fhir.rest.client.api.IGenericClient;
 import org.apache.jena.ext.xerces.impl.dv.util.Base64;
 import org.hl7.fhir.common.hapi.validation.support.PrePopulatedValidationSupport;
 import org.hl7.fhir.common.hapi.validation.support.ValidationSupportChain;
@@ -20,6 +22,7 @@ class MapperTestXMLToFHIR {
 
     private ValidationSupportChain validationSupport;
     private IWorkerContext hapiContext;
+	private IFhirResourceDao<StructureMap> structureMapDao;
 
     private final String xml ="<questionnaire><id>Questionnaire-Infectiologie</id><name>Avis de Diagnostic en Infectiologie</name><version>Version 1</version><publisher><name>Fyrstain</name></publisher></questionnaire>";
 
@@ -33,7 +36,8 @@ class MapperTestXMLToFHIR {
 
         FHIRPathEngine fhirPathEngine = new FHIRPathEngine(hapiContext);
 
-        Mapper mapper = new Mapper(hapiContext, fhirPathEngine, null);
+		  IGenericClient clientStructureMap = null;
+        Mapper mapper = new Mapper(hapiContext, fhirPathEngine, null, structureMapDao, clientStructureMap);
 
         Parameters.ParametersParameterComponent param = new Parameters.ParametersParameterComponent();
         param.setName("input");
@@ -67,6 +71,7 @@ class MapperTestXMLToFHIR {
 
     private StructureMap getStructureMap() {
         StructureMap structureMap = new StructureMap();
+		  structureMap.setUrl("http://example.org/base");
 
         StructureMap.StructureMapGroupComponent group = structureMap.addGroup();
         group.addInput().setName("source").setType("XML").setMode(StructureMap.StructureMapInputMode.SOURCE);

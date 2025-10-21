@@ -2,6 +2,8 @@ package ca.uhn.fhir.jpa.starter.mapping.service;
 
 import ca.uhn.fhir.context.FhirContext;
 import ca.uhn.fhir.context.support.DefaultProfileValidationSupport;
+import ca.uhn.fhir.jpa.api.dao.IFhirResourceDao;
+import ca.uhn.fhir.rest.client.api.IGenericClient;
 import org.apache.jena.ext.xerces.impl.dv.util.Base64;
 import org.hl7.fhir.common.hapi.validation.support.PrePopulatedValidationSupport;
 import org.hl7.fhir.common.hapi.validation.support.ValidationSupportChain;
@@ -21,6 +23,7 @@ class MapperTestFHIRToJSON {
 
     private ValidationSupportChain validationSupport;
     private IWorkerContext hapiContext;
+	private IFhirResourceDao<StructureMap> structureMapDao;
 
     @Test
     void mapCSVToFHIR() throws JSONException {
@@ -35,7 +38,8 @@ class MapperTestFHIRToJSON {
 
         FHIRPathEngine fhirPathEngine = new FHIRPathEngine(hapiContext);
 
-        Mapper mapper = new Mapper(hapiContext, fhirPathEngine, null);
+		  IGenericClient clientStructureMap = null;
+        Mapper mapper = new Mapper(hapiContext, fhirPathEngine, null, structureMapDao, clientStructureMap);
 
         Parameters.ParametersParameterComponent param = new Parameters.ParametersParameterComponent();
         param.setName("input");
@@ -61,6 +65,7 @@ class MapperTestFHIRToJSON {
 
     private StructureMap getStructureMap() {
         StructureMap structureMap = new StructureMap();
+		 structureMap.setUrl("http://example.org/base");
 
         StructureMap.StructureMapGroupComponent group = structureMap.addGroup();
         group.addInput().setName("source").setType("Patient").setMode(StructureMap.StructureMapInputMode.SOURCE);

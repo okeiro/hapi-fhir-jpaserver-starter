@@ -2,6 +2,8 @@ package ca.uhn.fhir.jpa.starter.mapping.service;
 
 import ca.uhn.fhir.context.FhirContext;
 import ca.uhn.fhir.context.support.DefaultProfileValidationSupport;
+import ca.uhn.fhir.jpa.api.dao.IFhirResourceDao;
+import ca.uhn.fhir.rest.client.api.IGenericClient;
 import org.apache.jena.ext.xerces.impl.dv.util.Base64;
 import org.hl7.fhir.common.hapi.validation.support.PrePopulatedValidationSupport;
 import org.hl7.fhir.common.hapi.validation.support.ValidationSupportChain;
@@ -20,6 +22,7 @@ public class MapperTestHL7v2Versions {
 
 	private ValidationSupportChain validationSupport;
 	private IWorkerContext hapiContext;
+	private IFhirResourceDao<StructureMap> structureMapDao;
 
 	@ParameterizedTest
 	@ValueSource(strings = {"2.2", "2.3", "2.3.1","2.4", "2.5", "2.5.1", "2.6", "2.7", "2.7.1", "2.8", "2.8.1"})
@@ -32,7 +35,8 @@ public class MapperTestHL7v2Versions {
 
 		FHIRPathEngine fhirPathEngine = new FHIRPathEngine(hapiContext);
 
-		Mapper mapper = new Mapper(hapiContext, fhirPathEngine, null);
+		IGenericClient clientStructureMap = null;
+		Mapper mapper = new Mapper(hapiContext, fhirPathEngine, null, structureMapDao, clientStructureMap);
 
 		String hl7v2Message = String.format(
 			"MSH|^~\\&|HIS|RIH|EKG|EKG|199904140038||ADT^A01||P|%s\r" +
@@ -67,6 +71,7 @@ public class MapperTestHL7v2Versions {
 
 	private StructureMap getStructureMap() {
 		StructureMap structureMap = new StructureMap();
+		structureMap.setUrl("http://example.org/base");
 
 		StructureMap.StructureMapGroupComponent group = new StructureMap.StructureMapGroupComponent();
 		group.setName("main");

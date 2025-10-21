@@ -2,6 +2,8 @@ package ca.uhn.fhir.jpa.starter.mapping.service;
 
 import ca.uhn.fhir.context.FhirContext;
 import ca.uhn.fhir.context.support.DefaultProfileValidationSupport;
+import ca.uhn.fhir.jpa.api.dao.IFhirResourceDao;
+import ca.uhn.fhir.rest.client.api.IGenericClient;
 import org.apache.jena.ext.xerces.impl.dv.util.Base64;
 import org.hl7.fhir.common.hapi.validation.support.PrePopulatedValidationSupport;
 import org.hl7.fhir.common.hapi.validation.support.ValidationSupportChain;
@@ -26,6 +28,7 @@ public class MapperTestDateOpInstant {
 		+ "IN1||022254P|4558PD|BLUE CROSS|STREET^OTHER STREET^CITY^ST^00990||(333)333-6666||221K|LENIX|||19980515|19990515|||PATIENT01 TEST D||||||||||||||||||02LL|022LP554";
 	private ValidationSupportChain validationSupport;
 	private IWorkerContext hapiContext;
+	private IFhirResourceDao<StructureMap> structureMapDao;
 
 	@Test
 	void mapHL7v2ToFHIR() {
@@ -37,7 +40,8 @@ public class MapperTestDateOpInstant {
 
 		FHIRPathEngine fhirPathEngine = new FHIRPathEngine(hapiContext);
 
-		Mapper mapper = new Mapper(hapiContext, fhirPathEngine, null);
+		IGenericClient clientStructureMap = null;
+		Mapper mapper = new Mapper(hapiContext, fhirPathEngine, null, structureMapDao, clientStructureMap);
 
 		Parameters.ParametersParameterComponent param = new Parameters.ParametersParameterComponent();
 		param.setName("input");
@@ -58,6 +62,7 @@ public class MapperTestDateOpInstant {
 
 	private StructureMap getStructureMap() {
 		StructureMap structureMap = new StructureMap();
+		structureMap.setUrl("http://example.org/base");
 
 		StructureMap.StructureMapGroupComponent group = new StructureMap.StructureMapGroupComponent();
 		group.setName("main");
