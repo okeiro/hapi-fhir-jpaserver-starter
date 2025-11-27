@@ -13,6 +13,7 @@ import ca.uhn.fhir.rest.server.exceptions.InvalidRequestException;
 import ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException;
 import ca.uhn.hl7v2.HL7Exception;
 import ca.uhn.hl7v2.model.*;
+import ca.uhn.hl7v2.model.Group;
 import org.apache.commons.csv.CSVRecord;
 import org.hl7.fhir.exceptions.DefinitionException;
 import org.hl7.fhir.exceptions.FHIRException;
@@ -144,11 +145,11 @@ public class Mapper {
 					.map(StructureMap.StructureMapGroupInputComponent::getType)
 					.findFirst().orElse("Resource");
 
-					result.addParameter(new Parameters.ParametersParameterComponent()
-						.setName(v.getName())
-						.setResource(new Binary()
-							.setContentType(getContentType(type))
-							.setContentAsBase64(Base64.getEncoder().encodeToString(serializeObject(v.getObject(), type)))));
+				result.addParameter(new Parameters.ParametersParameterComponent()
+					.setName(v.getName())
+					.setResource(new Binary()
+						.setContentType(getContentType(type))
+						.setContentAsBase64(Base64.getEncoder().encodeToString(serializeObject(v.getObject(), type)))));
 			});
 		}
 		return result;
@@ -783,14 +784,7 @@ public class Mapper {
 
 				List<GenericSegment> segments;
 				if (hl7v2Object instanceof Message) {
-					if (path.getFieldRepetition() != null) {
-						int segmentRepetition = path.getSegmentRepetition() != null ? path.getSegmentRepetition() : 0;
-						segments = List.of((GenericSegment) ((Message) hl7v2Object).get(path.getSegment(), segmentRepetition));
-					} else {
-						segments = Arrays.stream(((Message) hl7v2Object).getAll(path.getSegment()))
-							.map(this::toGenericSegment)
-							.collect(Collectors.toList());
-					}
+					segments = findSegments((Message) hl7v2Object, path);
 				} else {
 					segments = List.of(toGenericSegment(hl7v2Object));
 				}
@@ -847,7 +841,7 @@ public class Mapper {
 					}
 				}
 			} catch (ClassCastException | HL7Exception e) {
-				logger.info("Field not found in HL7v2 source !", e);
+				logger.info("Field not found in HL7v2 source: " + elementName, e);
 			}
 		}
 		return skip ? new ArrayList<>() : items;
@@ -873,6 +867,90 @@ public class Mapper {
 		throw new IllegalArgumentException("Unsupported HL7v2 object type: " + obj.getClass());
 	}
 
+	private List<GenericSegment> findSegments(Message msg, Path path) throws HL7Exception {
+		List<GenericSegment> result = new ArrayList<>();
+
+		List<String> groups = path.getGroups();
+		List<Integer> groupReps = path.getGroupRepetitions();
+
+		List<Group> currentGroups = new ArrayList<>();
+		currentGroups.add(msg);
+
+		for (int i = 0; i < groups.size(); i++) {
+			String groupName = groups.get(i);
+			Integer rep = groupReps.get(i);
+
+			List<Group> nextGroups = new ArrayList<>();
+			for (Group group : currentGroups) {
+				nextGroups.addAll(getGroupsByName(group, groupName, rep));
+			}
+			currentGroups = nextGroups;
+		}
+
+		for (Group group : currentGroups) {
+			try {
+				Structure[] segs = group.getAll(path.getSegment());
+				int segRep = path.getSegmentRepetition() != null ? path.getSegmentRepetition() : 0;
+
+				if (segRep < segs.length) {
+					result.add(toGenericSegment(segs[segRep]));
+				}
+			} catch (HL7Exception ignored) {
+			}
+		}
+
+		if (result.isEmpty()) {
+			try {
+				Structure[] rootSegs = msg.getAll(path.getSegment());
+				for (int i = 0; i < rootSegs.length; i++) {
+					if (path.getSegmentRepetition() == null || i == path.getSegmentRepetition()) {
+						result.add(toGenericSegment(rootSegs[i]));
+					}
+				}
+			} catch (HL7Exception ignored) {}
+		}
+
+		if (result.isEmpty()) {
+			result.addAll(scanGroupsRecursively(msg, path));
+		}
+
+		return result;
+	}
+
+	private List<Group> getGroupsByName(Group parent, String name, Integer repetition) {
+		List<Group> results = new ArrayList<>();
+		try {
+			if (repetition != null) {
+				Structure structure = parent.get(name, repetition);
+				if (structure instanceof Group) results.add((Group) structure);
+			} else {
+				for (Structure structure : parent.getAll(name)) {
+					if (structure instanceof Group) results.add((Group) structure);
+				}
+			}
+		} catch (Exception ignored) {}
+		return results;
+	}
+
+	private List<GenericSegment> scanGroupsRecursively(Group group, Path path) {
+		List<GenericSegment> result = new ArrayList<>();
+
+		for (String name : group.getNames()) {
+			try {
+				for (Structure structure : group.getAll(name)) {
+					if (structure instanceof Group) {
+						result.addAll(scanGroupsRecursively((Group) structure, path));
+					} else if (structure instanceof Segment) {
+						if (name.equalsIgnoreCase(path.getSegment())) {
+							result.add(toGenericSegment(structure));
+						}
+					}
+				}
+			} catch (Exception ignored) {}
+		}
+
+		return result;
+	}
 
 	/**
 	 * Get a FHIR Item from a CSV extracted string.
