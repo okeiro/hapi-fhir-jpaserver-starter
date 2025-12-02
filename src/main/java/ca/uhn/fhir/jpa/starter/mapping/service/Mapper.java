@@ -320,8 +320,9 @@ public class Mapper {
 		String type = context.getGroup().getInput().stream()
 			.filter(input -> sourceContext.equals(input.getName()))
 			.map(StructureMap.StructureMapGroupInputComponent::getType)
-			.findFirst().orElse("Resource");
-		//.orElse(context.getGroup().getInput().get(0).getType());
+			.findFirst()
+			.orElse(context.getGroup().getInput().get(0).getType());
+			//.orElse("Resource");
 
 		switch (type) {
 			case "CSV":
@@ -890,10 +891,15 @@ public class Mapper {
 		for (Group group : currentGroups) {
 			try {
 				Structure[] segs = group.getAll(path.getSegment());
-				int segRep = path.getSegmentRepetition() != null ? path.getSegmentRepetition() : 0;
-
-				if (segRep < segs.length) {
-					result.add(toGenericSegment(segs[segRep]));
+				if (path.getSegmentRepetition() == null) {
+					for (Structure seg : segs) {
+						result.add(toGenericSegment(seg));
+					}
+				} else {
+					int rep = path.getSegmentRepetition();
+					if (rep < segs.length) {
+						result.add(toGenericSegment(segs[rep]));
+					}
 				}
 			} catch (HL7Exception ignored) {
 			}
