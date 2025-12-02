@@ -34,6 +34,7 @@ import org.slf4j.LoggerFactory;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -1174,6 +1175,16 @@ public class Mapper {
 							return new DateTimeType(castSource);
 						case "time":
 							return new TimeType(castSource);
+						case "positiveInt":
+							try {
+								int v = Integer.parseInt(castSource);
+								if (v <= 0) {
+									throw new FHIRException("Value for positiveInt must be > 0: " + castSource);
+								}
+								return new PositiveIntType(v);
+							} catch (NumberFormatException nfe) {
+								throw new FHIRException("Cannot cast value to positiveInt: " + castSource, nfe);
+							}
 						default:
 							throw new FHIRException(String.format("Cast to %s not yet supported", castTarget));
 					}
@@ -1227,19 +1238,29 @@ public class Mapper {
 				case DATEOP:
 					String dateSource = getParamStringNoNull(context.getVariables(), context.getTarget().getParameter().get(0), context.getTarget().toString());
 					String inputFormat = getParamStringNoNull(context.getVariables(), context.getTarget().getParameter().get(1), context.getTarget().toString());
-					String outputFormatOrType = (context.getTarget().getParameter().size() > 2) ? getParamStringNoNull(context.getVariables(), context.getTarget().getParameter().get(2), context.getTarget().toString()) : null;
-					boolean forceInstant = outputFormatOrType != null && "instant".equalsIgnoreCase(outputFormatOrType.trim());
-
-					DateTimeFormatter outputFormatter = (!forceInstant && outputFormatOrType != null)
-						? DateTimeFormatter.ofPattern(outputFormatOrType)
+					String outputFormatOrType = (context.getTarget().getParameter().size() > 2)
+						? getParamStringNoNull(context.getVariables(), context.getTarget().getParameter().get(2), context.getTarget().toString())
 						: null;
+
+					boolean forceInstant = outputFormatOrType != null && "instant".equalsIgnoreCase(outputFormatOrType.trim());
+					boolean forceTime = outputFormatOrType != null && "time".equalsIgnoreCase(outputFormatOrType.trim());
+
+					DateTimeFormatter outputFormatter =
+						(!forceInstant && !forceTime && outputFormatOrType != null)
+							? DateTimeFormatter.ofPattern(outputFormatOrType)
+							: null;
 
 					DateTimeFormatter inputFormatter = DateTimeFormatter.ofPattern(inputFormat);
 
 					try {
 						LocalDateTime ldt = LocalDateTime.parse(dateSource, inputFormatter);
+
 						if (forceInstant) {
 							return new InstantType(Date.from(ldt.atZone(ZoneOffset.UTC).toInstant()));
+						}
+						if (forceTime) {
+							LocalTime lt = ldt.toLocalTime();
+							return new TimeType(lt.format(DateTimeFormatter.ISO_LOCAL_TIME));
 						}
 						if (outputFormatter != null) {
 							String formatted = ldt.atZone(ZoneOffset.UTC).format(outputFormatter);
@@ -1250,8 +1271,12 @@ public class Mapper {
 					} catch (Exception e1) {
 						try {
 							LocalDate ld = LocalDate.parse(dateSource, inputFormatter);
+
 							if (forceInstant) {
 								return new InstantType(Date.from(ld.atStartOfDay(ZoneOffset.UTC).toInstant()));
+							}
+							if (forceTime) {
+								return new TimeType("00:00:00");
 							}
 							if (outputFormatter != null) {
 								String formatted = ld.atStartOfDay(ZoneOffset.UTC).format(outputFormatter);
@@ -1260,9 +1285,26 @@ public class Mapper {
 							return new DateType(Date.from(ld.atStartOfDay(ZoneOffset.UTC).toInstant()));
 
 						} catch (Exception e2) {
-							throw new IllegalArgumentException(
-								String.format("Could not parse date '%s' with input format '%s'",
-									dateSource, inputFormat), e2);
+							try {
+								LocalTime lt = LocalTime.parse(dateSource, inputFormatter);
+
+								if (forceInstant) {
+									LocalDateTime ldt = lt.atDate(LocalDate.now());
+									return new InstantType(Date.from(ldt.atZone(ZoneOffset.UTC).toInstant()));
+								}
+								if (forceTime || outputFormatter == null) {
+									return new TimeType(lt.format(DateTimeFormatter.ISO_LOCAL_TIME));
+								}
+								String formatted = lt.format(outputFormatter);
+								return new TimeType(formatted);
+
+							} catch (Exception e3) {
+								throw new IllegalArgumentException(
+									String.format("Could not parse date/time '%s' with input format '%s'",
+										dateSource, inputFormat),
+									e3
+								);
+							}
 						}
 					}
 				case ESCAPE:
@@ -1536,6 +1578,11 @@ public class Mapper {
 		if (parameterValue == null) {
 			throw new FHIRException(String.format("Unable to find a value for %s. Context: %s", parameter, message));
 		}
+
+		if (parameterValue.isPrimitive()) {
+			return ((PrimitiveType<?>) parameterValue).getValueAsString();
+		}
+
 		if (!parameterValue.hasPrimitiveValue()) {
 			throw new FHIRException(String.format("Found a value for %s, but it has a type of %s and cannot be treated as a string. Context: %s",
 				parameter, parameterValue.fhirType(), message));

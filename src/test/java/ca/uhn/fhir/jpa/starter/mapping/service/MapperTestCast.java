@@ -17,21 +17,24 @@ import java.io.ByteArrayInputStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-public class MapperTestDateOpInstant {
-	private final String hl7v2Message = "MSH|^~\\&|HIS|RIH|EKG|EKG|199904140038||ADT^A01||P|2.2\r"
-		+ "PID|0001|00009874|00001122|A00977|SMITH^JOHN^M|MOM|19581119|F|NOTREAL^LINDA^M|C|564 SPRING ST^^NEEDHAM^MA^02494^US|0002|(818)565-1551|(425)828-3344|E|S|C|0000444444|252-00-4414||||SA|||SA||||NONE|V1|0001|I|D.ER^50A^M110^01|ER|P00055|11B^M011^02|070615^BATMAN^GEORGE^L|555888^NOTREAL^BOB^K^DR^MD|777889^NOTREAL^SAM^T^DR^MD^PHD|ER|D.WT^1A^M010^01|||ER|AMB|02|070615^NOTREAL^BILL^L|ER|000001916994|D||||||||||||||||GDD|WA|NORM|02|O|02|E.IN^02D^M090^01|E.IN^01D^M080^01|199904072124|199904101200|199904101200||||5555112333|||666097^NOTREAL^MANNY^P\r"
-		+ "NK1|0222555|NOTREAL^JAMES^R|FA|STREET^OTHER STREET^CITY^ST^55566|(222)111-3333|(888)999-0000|||||||ORGANIZATION\r"
-		+ "PV1|0001|I|D.ER^1F^M950^01|ER|P000998|11B^M011^02|070615^BATMAN^GEORGE^L|555888^OKNEL^BOB^K^DR^MD|777889^NOTREAL^SAM^T^DR^MD^PHD|ER|D.WT^1A^M010^01|||ER|AMB|02|070615^VOICE^BILL^L|ER|000001916994|D||||||||||||||||GDD|WA|NORM|02|O|02|E.IN^02D^M090^01|E.IN^01D^M080^01|199904072124|199904101200|||||5555112333|||666097^DNOTREAL^MANNY^P\r"
-		+ "PV2|||0112^TESTING|55555^PATIENT IS NORMAL|NONE|||19990225|19990226|1|1|TESTING|555888^NOTREAL^BOB^K^DR^MD||||||||||PROD^003^099|02|ER||NONE|19990225|19990223|19990316|NONE\r"
-		+ "AL1||SEV|001^POLLEN\r"
-		+ "GT1||0222PL|NOTREAL^BOB^B||STREET^OTHER STREET^CITY^ST^77787|(444)999-3333|(222)777-5555||||MO|111-33-5555||||NOTREAL GILL N|STREET^OTHER STREET^CITY^ST^99999|(111)222-3333\r"
-		+ "IN1||022254P|4558PD|BLUE CROSS|STREET^OTHER STREET^CITY^ST^00990||(333)333-6666||221K|LENIX|||19980515|19990515|||PATIENT01 TEST D||||||||||||||||||02LL|022LP554";
+public class MapperTestCast {
+
+	private final String hl7v2Message =
+		"MSH|^~\\&|MedApp|MedFacility|MedPlatform|MedFacility|20250804155110||SIU^S14|MSG123456789|P|2.5.1\r"
+			+ "SCH||9999999999^MedPlatform||||PROC1^ProcedureType|||||^^30^202508041530|||||12345678^DUPONT^MARIE||||MedPlatform|||||Cancelled\r"
+			+ "NTE|||\r"
+			+ "PID|||987654321^^^DxCare&1.2.250.1.38.3.1.101&ISO^PI~299999999999999^^^ASIP-SANTE-NIR&1.2.250.1.213.1.4.8&ISO^NH||DOE^JOHN^^^^^D~DOE^JOHN^^^^^L||19880101|M|||10 RUE EXEMPLE^^VILLEEXEMPLE^^99999~^^^^^^BDL^^99887||~0601020304^PRN^CP^^^^^^^^^0601020304~^NET^^john.doe@example.com||||||||||France\r"
+			+ "PV1|1|O\r"
+			+ "RGS|1\r"
+			+ "AIG|1|||DRTEST^TEST PHYSICIAN\r"
+			+ "AIL|1||^||SPECUNIT\r";
+
 	private ValidationSupportChain validationSupport;
 	private IWorkerContext hapiContext;
 	private IFhirResourceDao<StructureMap> structureMapDao;
 
 	@Test
-	void mapHL7v2ToFHIR() {
+	void mapHL7v2ToFHIRTestCastPositiveInt() {
 		FhirContext context = FhirContext.forR4();
 		PrePopulatedValidationSupport prePopulatedValidationSupport = new PrePopulatedValidationSupport(context);
 		this.validationSupport = new ValidationSupportChain(prePopulatedValidationSupport, new DefaultProfileValidationSupport(context));
@@ -51,16 +54,17 @@ public class MapperTestDateOpInstant {
 
 		Parameters parameters = new Parameters().addParameter(param);
 
-		Parameters result = mapper.map(getStructureMap(), parameters);
+		Parameters result = mapper.map(getStructureMapInstant(), parameters);
 
 		assertNotNull(result);
 		assertNotNull(result.getParameter("target").getResource());
 		assertInstanceOf(Binary.class, result.getParameter("target").getResource());
-		Patient patient = (Patient) context.newJsonParser().parseResource(new ByteArrayInputStream(((Binary) result.getParameter("target").getResource()).getContent()));
-		assertEquals(new InstantType("1999-04-14T00:38:00Z").getValue().toInstant(), patient.getMeta().getLastUpdated().toInstant());
+		Appointment appointment = (Appointment) context.newJsonParser().parseResource(new ByteArrayInputStream(((Binary) result.getParameter("target").getResource()).getContent()));
+		assertInstanceOf(PositiveIntType.class, appointment.getMinutesDurationElement());
+		assertEquals(30, appointment.getMinutesDurationElement().getValue());
 	}
 
-	private StructureMap getStructureMap() {
+	private StructureMap getStructureMapInstant() {
 		StructureMap structureMap = new StructureMap();
 		structureMap.setUrl("http://example.org/base");
 
@@ -75,25 +79,21 @@ public class MapperTestDateOpInstant {
 
 		StructureMap.StructureMapGroupInputComponent inputTarget = new StructureMap.StructureMapGroupInputComponent();
 		inputTarget.setName("target");
-		inputTarget.setType("Patient");
+		inputTarget.setType("Appointment");
 		inputTarget.setMode(StructureMap.StructureMapInputMode.TARGET);
 
 		group.addInput(inputSource);
 		group.addInput(inputTarget);
 
 		StructureMap.StructureMapGroupRuleComponent dobRule = group.addRule().setName("dobRule");
-		dobRule.addSource().setContext("source").setType("string").setElement("MSH-7").setVariable("MSHDateTimeOfMessage");
+		dobRule.addSource().setContext("source").setType("string").setElement("SCH-11-3").setVariable("duration");
 		dobRule.addTarget().setContext("target").setContextType(StructureMap.StructureMapContextType.VARIABLE)
-			.setElement("meta.lastUpdated").setTransform(StructureMap.StructureMapTransform.DATEOP)
+			.setElement("minutesDuration").setTransform(StructureMap.StructureMapTransform.CAST)
 			.addParameter(new StructureMap.StructureMapGroupRuleTargetParameterComponent()
-				.setValue(new IdType("MSHDateTimeOfMessage")))
+				.setValue(new IdType("duration")))
 			.addParameter(new StructureMap.StructureMapGroupRuleTargetParameterComponent()
-				.setValue(new StringType("yyyyMMddHHmm")))
-			.addParameter(new StructureMap.StructureMapGroupRuleTargetParameterComponent()
-				.setValue(new StringType("instant")));
-
+				.setValue(new StringType("positiveInt")));
 		structureMap.addGroup(group);
-
 		return structureMap;
 	}
 }
