@@ -1185,6 +1185,15 @@ public class Mapper {
 							} catch (NumberFormatException nfe) {
 								throw new FHIRException("Cannot cast value to positiveInt: " + castSource, nfe);
 							}
+						case "base64Binary":
+							try {
+								String encoded = Base64.getEncoder().encodeToString(
+									castSource.getBytes(StandardCharsets.UTF_8)
+								);
+								return new Base64BinaryType(encoded);
+							} catch (Exception e) {
+								throw new FHIRException("Cannot cast value to base64Binary: " + castSource, e);
+							}
 						default:
 							throw new FHIRException(String.format("Cast to %s not yet supported", castTarget));
 					}
