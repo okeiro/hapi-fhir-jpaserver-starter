@@ -39,7 +39,7 @@
     </parent>
 
     <artifactId>hapi-fhir-jpaserver-starter</artifactId>
-    <version>mapping-2.2.0</version>
+    <version>mapping-2.2.1-SNAPSHOT</version>
     <packaging>war</packaging>
 
     <name>HAPI FHIR JPA Server - Starter Project</name>
