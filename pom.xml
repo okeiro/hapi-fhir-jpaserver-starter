@@ -24,7 +24,7 @@
     </parent>
 
     <artifactId>hapi-fhir-jpaserver-starter</artifactId>
-    <version>mapping-2.1.1-SNAPSHOT</version>
+    <version>mapping-2.2.0</version>
     <packaging>war</packaging>
 
     <prerequisites>
