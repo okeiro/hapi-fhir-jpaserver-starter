@@ -161,6 +161,7 @@ public class Mapper {
 			case "CSV": return new CSVRecords(parseCSVData(parameter.getContentAsBase64()));
 			case "JSON": return parseJsonData(parameter.getContentAsBase64());
 			case "HL7v2": return HL7v2DataReader.parseData(parameter.getContentAsBase64());
+			case "HPRIM": return HPRIMDataReader.parseData(parameter.getContentAsBase64());
 			case "XML": return parseXMLData(parameter.getContentAsBase64());
 			default:
 				String stringContent = new String(Base64.getDecoder().decode(parameter.getContentAsBase64()), StandardCharsets.UTF_8);
@@ -173,6 +174,7 @@ public class Mapper {
 		switch (type) {
 			case "CSV": return new CSVBuilder();
 			case "JSON": return new JSONBuilder();
+			case "HL7v2": return new HL7v2Builder();
 			default: return ResourceFactory.createResourceOrType(type);
 		}
 	}
@@ -198,6 +200,7 @@ public class Mapper {
 			case "XML":
 				return XML_MIME_TYPE;
 			case "HL7v2":
+			case "HPRIM":
 				return HL7v2_MIME_TYPE;
 			default:
 				return "application/fhir+json";
@@ -330,6 +333,8 @@ public class Mapper {
 				return processCSVSource(context, localVariables);
 			case "HL7v2":
 				return processHL7v2Source(context, localVariables);
+			case "HPRIM":
+				return processHPRIMSource(context, localVariables);
 			case "XML":
 				//Uses JSON processing as XML are translated to JSON
 			case "JSON":
@@ -387,6 +392,7 @@ public class Mapper {
 
 		items = csvRecords.getRecords().stream()
 			.map(record -> processCSVRecord(context, record))
+			.filter(record-> record != null)
 			.collect(Collectors.toList());
 
 		List<Variables> result = new ArrayList<>();
@@ -533,6 +539,65 @@ public class Mapper {
 				result.add(variables);
 			}
 		}
+		return result;
+	}
+
+	/**
+	 * Process HPRIM sources for a specific context.
+	 *
+	 * @param context        the Mapping context.
+	 * @param localVariables local variables
+	 * @return a list of variables for all matched sources
+	 */
+	private List<Variables> processHPRIMSource(MappingContext context, Variables localVariables) {
+		// TODO Handle multiple sources?
+		if (context.getRule().getSource().size() > 1) {
+			throw new InvalidRequestException(String.format(
+				"Rule \"%s\": multiple sources are not handled yet",
+				context.getRule().getName()
+			));
+		}
+
+		StructureMap.StructureMapGroupRuleSourceComponent source = context.getRule().getSource().get(0);
+
+		Object sourceObject = localVariables.get(INPUT, context.getSources().get(0).getContext());
+
+		if (sourceObject == null) {
+			throw new InvalidRequestException(
+				String.format("Unknown input variable %s in %s for rule %s",
+					context.getSources().get(0).getContext(),
+					context.getStructureMap().getUrl(),
+					context.getRule().getName()));
+		} else if (!source.hasElement()) {
+			throw new InvalidRequestException(
+				String.format("Element should not be null in %s for rule %s !",
+					context.getStructureMap().getUrl(),
+					context.getRule().getName()));
+		} else if (!source.hasType()) {
+			throw new InvalidRequestException(
+				String.format("Type should not be null in %s for rule %s !",
+					context.getStructureMap().getUrl(),
+					context.getRule().getName()));
+		}
+
+		List<Object> items;
+
+		// Only HPRIMMessage or HPRIMSegment
+		if (sourceObject instanceof HPRIMMessage || sourceObject instanceof HPRIMSegment) {
+			items = processHPRIMObject(context, sourceObject);
+		} else {
+			items = new ArrayList<>();
+		}
+
+		List<Variables> result = new ArrayList<>();
+		if (source.hasVariable()) {
+			for (Object base : items) {
+				Variables variables = localVariables.copy();
+				variables.add(INPUT, source.getVariable(), base);
+				result.add(variables);
+			}
+		}
+
 		return result;
 	}
 
@@ -849,6 +914,19 @@ public class Mapper {
 		return skip ? new ArrayList<>() : items;
 	}
 
+	private String normalizeSegmentName(String name) {
+		if (name == null) return null;
+
+		if (name.matches("^[A-Z]{2}\\d.*")) {
+			return name.substring(0, 3);
+		}
+
+		if (name.matches("^[A-Z]{3,}\\d+$")) {
+			return name.replaceAll("\\d+$", "");
+		}
+		return name;
+	}
+
 	/**
 	 * Converts an object (GenericSegment or typed Segment) to GenericSegment
 	 */
@@ -890,31 +968,38 @@ public class Mapper {
 		}
 
 		for (Group group : currentGroups) {
-			try {
-				Structure[] segs = group.getAll(path.getSegment());
-				if (path.getSegmentRepetition() == null) {
-					for (Structure seg : segs) {
-						result.add(toGenericSegment(seg));
-					}
-				} else {
-					int rep = path.getSegmentRepetition();
-					if (rep < segs.length) {
-						result.add(toGenericSegment(segs[rep]));
-					}
+			for (String name : group.getNames()) {
+				if (!normalizeSegmentName(name)
+					.equalsIgnoreCase(normalizeSegmentName(path.getSegment()))) {
+					continue;
 				}
-			} catch (HL7Exception ignored) {
+
+				try {
+					Structure[] segs = group.getAll(name);
+					for (int i = 0; i < segs.length; i++) {
+						if (path.getSegmentRepetition() == null || i == path.getSegmentRepetition()) {
+							result.add(toGenericSegment(segs[i]));
+						}
+					}
+				} catch (HL7Exception ignored) {}
 			}
 		}
 
 		if (result.isEmpty()) {
-			try {
-				Structure[] rootSegs = msg.getAll(path.getSegment());
-				for (int i = 0; i < rootSegs.length; i++) {
-					if (path.getSegmentRepetition() == null || i == path.getSegmentRepetition()) {
-						result.add(toGenericSegment(rootSegs[i]));
-					}
+			for (String name : msg.getNames()) {
+				if (!normalizeSegmentName(name)
+					.equalsIgnoreCase(normalizeSegmentName(path.getSegment()))) {
+					continue;
 				}
-			} catch (HL7Exception ignored) {}
+				try {
+					Structure[] segs = msg.getAll(name);
+					for (int i = 0; i < segs.length; i++) {
+						if (path.getSegmentRepetition() == null || i == path.getSegmentRepetition()) {
+							result.add(toGenericSegment(segs[i]));
+						}
+					}
+				} catch (HL7Exception ignored) {}
+			}
 		}
 
 		if (result.isEmpty()) {
@@ -948,7 +1033,8 @@ public class Mapper {
 					if (structure instanceof Group) {
 						result.addAll(scanGroupsRecursively((Group) structure, path));
 					} else if (structure instanceof Segment) {
-						if (name.equalsIgnoreCase(path.getSegment())) {
+						if (normalizeSegmentName(name)
+							.equalsIgnoreCase(normalizeSegmentName(path.getSegment()))) {
 							result.add(toGenericSegment(structure));
 						}
 					}
@@ -957,6 +1043,106 @@ public class Mapper {
 		}
 
 		return result;
+	}
+
+	/**
+	 * Processes a HPRIM object according to the mapping context.
+	 *
+	 * @param context    the Mapping context
+	 * @param hprimObject the HPRIMMessage or HPRIMSegment
+	 * @return a list of Base items resulting from the processing
+	 */
+	List<Object> processHPRIMObject(MappingContext context, Object hprimObject) {
+		List<Object> items = new ArrayList<>();
+		boolean skip = false;
+
+		for (var source : context.getSources()) {
+			Base item = null;
+			String pathString = source.getElement();
+
+			try {
+				HPRIMPath path = new HPRIMPath(pathString);
+				List<HPRIMSegment> segments = new ArrayList<>();
+				if (hprimObject instanceof HPRIMMessage msg) {
+					segments.addAll(msg.getSegments(path.getSegment()));
+				} else if (hprimObject instanceof HPRIMSegment seg) {
+					if (seg.getName().equals(path.getSegment())) {
+						segments.add(seg);
+					}
+				}
+
+				if (segments.size() <= (path.getSegmentIndex() != null ? path.getSegmentIndex() : 0)) {
+					logger.info("Segment index {} out of bounds for {}", path.getSegmentIndex(), path.getSegment());
+					continue;
+				}
+
+				HPRIMSegment segment = segments.get(path.getSegmentIndex() != null ? path.getSegmentIndex() : 0);
+
+				if (path.getField() == null) {
+					for (HPRIMSegment seg : segments) {
+						items.add(seg);
+					}
+				} else {
+					// Field
+					if (segment.getFields().size() <= path.getField()) {
+						logger.info("Field {} not found in segment {}", path.getField() + 1, path.getSegment());
+						continue;
+					}
+
+					String[] field = segment.getFields().get(path.getField());
+					if (field.length <= (path.getFieldRepetition() != null ? path.getFieldRepetition() : 0)) {
+						logger.info("Repetition {} not found in field {} of segment {}", path.getFieldRepetition(), path.getField() + 1, path.getSegment());
+						continue;
+					}
+
+					String value;
+
+					if (!path.hasExplicitComponent()) {
+						value = String.join("^", field);
+					} else {
+						value = field[path.getFieldRepetition() != null ? path.getFieldRepetition() : 0];
+					}
+
+					// Component
+					if (path.hasExplicitComponent()) {
+						String[] components = value.split("\\^", -1);
+						if (components.length <= path.getComponent()) {
+							logger.info("Component {} not found in field {} of segment {}", path.getComponent() + 1, path.getField() + 1, path.getSegment());
+							continue;
+						}
+						value = components[path.getComponent()];
+
+						// Sub-component
+						if (path.getSubComponent() != null) {
+							String[] subComponents = value.split("&", -1);
+							if (subComponents.length <= path.getSubComponent()) {
+								logger.info("Subcomponent {} not found in component {} of field {} segment {}", path.getSubComponent() + 1, path.getComponent() + 1, path.getField() + 1, path.getSegment());
+								continue;
+							}
+							value = subComponents[path.getSubComponent()];
+						}
+					}
+
+					item = getFHIRItem(value, source.getType());
+				}
+
+				if (item != null) {
+					checkValues(source, List.of(item), context.getRule().getName());
+					if (!matchesCondition(source, item, context.getVariables())) {
+						skip = true;
+						break;
+					}
+					items.add(item);
+				} else if (source.hasDefaultValue()) {
+					item = source.getDefaultValue();
+					items.add(item);
+				}
+
+			} catch (Exception e) {
+				logger.info("Failed to process HPRIM path: " + pathString, e);
+			}
+		}
+		return skip ? new ArrayList<>() : items;
 	}
 
 	/**
@@ -1116,6 +1302,38 @@ public class Mapper {
 			if (result != null) {
 				((JSONBuilder) targetedElement).putByPath(element, result.castToString(result).getValue());
 			}
+		} else if (targetedElement instanceof HL7v2Builder hl7) {
+			String element = context.getTarget().getElement();
+
+			Object source = context.getVariables()
+				.get(INPUT, context.getRule().getSource().get(0).getVariable());
+
+			if (!element.contains("-")) {
+
+				if (source instanceof HPRIMSegment seg) {
+					hl7.addSegment(seg.getName(), seg.getFields());
+					return;
+				}
+
+				if (source instanceof List<?> list) {
+					for (Object obj : list) {
+						if (obj instanceof HPRIMSegment seg) {
+							hl7.addSegment(seg.getName(), seg.getFields());
+						}
+					}
+					return;
+				}
+				return;
+			}
+
+			if (context.getTarget().hasTransform()) {
+				result = runTransform(context, null, atRoot);
+			}
+
+			hl7.putByPath(
+				element,
+				result != null ? result.castToString(result).getValue() : ""
+			);
 		}
 
 		// If the target defines a variable, put the result in it.
@@ -1198,9 +1416,22 @@ public class Mapper {
 							throw new FHIRException(String.format("Cast to %s not yet supported", castTarget));
 					}
 				case APPEND:
-					StringBuilder sb = new StringBuilder(getParamStringNoNull(context.getVariables(), context.getTarget().getParameter().get(0), context.getTarget().toString()));
+					StringBuilder sb = new StringBuilder(
+						normalizeAppendParam(
+							getParamStringNoNull(
+								context.getVariables(),
+								context.getTarget().getParameter().get(0),
+								context.getTarget().toString()
+							)
+						)
+					);
 					for (int i = 1; i < context.getTarget().getParameter().size(); i++) {
-						sb.append(getParamStringNoNull(context.getVariables(), context.getTarget().getParameter().get(i), context.getTarget().toString()));
+						String paramValue = getParamStringNoNull(
+							context.getVariables(),
+							context.getTarget().getParameter().get(i),
+							context.getTarget().toString()
+						);
+						sb.append(normalizeAppendParam(paramValue));
 					}
 					return new StringType(sb.toString());
 				case TRANSLATE:
@@ -1325,6 +1556,23 @@ public class Mapper {
 			throw new FHIRException(String.format("Exception executing transform %s on Rule \"%s\": %s",
 				context.getTarget().toString(), context.getRule().getName(), e.getMessage()), e);
 		}
+	}
+
+	private String normalizeAppendParam(String value) {
+		if (value == null) {
+			return "";
+		}
+		String cleaned = value.trim();
+
+		if (cleaned.matches("(?i)(&?nbsp;?)+")) {
+			int count = cleaned.replaceAll("(?i)[^n]", "").length();
+			return " ".repeat(Math.max(1, count));
+		}
+
+		if (value.equals(" ")) {
+			return " ";
+		}
+		return value;
 	}
 
 	/**
@@ -2049,7 +2297,11 @@ public class Mapper {
 						element = element.makeProperty(elementPath.hashCode(), elementPath);
 					}
 				} else {
-					element = element.setProperty(elementPath.hashCode(), elementPath, property);
+					if (element instanceof org.hl7.fhir.r4.model.Narrative && "div".equals(elementPath) && property instanceof org.hl7.fhir.r4.model.StringType) {
+						((org.hl7.fhir.r4.model.Narrative) element).setDivAsString(((org.hl7.fhir.r4.model.StringType) property).getValue());
+					} else {
+						element = element.setProperty(elementPath.hashCode(), elementPath, property);
+					}
 				}
 			}
 		}
