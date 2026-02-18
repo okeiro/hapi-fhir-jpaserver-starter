@@ -7,6 +7,7 @@ import ca.uhn.fhir.jpa.api.dao.IFhirResourceDao;
 import ca.uhn.fhir.jpa.searchparam.SearchParameterMap;
 import ca.uhn.fhir.jpa.starter.mapping.service.FFHIRPathHostServices;
 import ca.uhn.fhir.jpa.starter.mapping.service.Mapper;
+import ca.uhn.fhir.jpa.starter.mapping.service.TransformerService;
 import ca.uhn.fhir.jpa.starter.mapping.validation.ExtendedRemoteTerminologyServiceValidationSupport;
 import ca.uhn.fhir.jpa.starter.mapping.validation.PersistedValidationSupportClass;
 import ca.uhn.fhir.rest.annotation.Operation;
@@ -46,8 +47,9 @@ public class TransformProvider {
 			new DefaultProfileValidationSupport(context)
 		);
 
+		String terminologyUrl = null;
 		if (parameters.getParameter("terminologyEndpoint") != null) {
-			String terminologyUrl = ((Endpoint) parameters.getParameter("terminologyEndpoint").getResource()).getAddress();
+			terminologyUrl = ((Endpoint) parameters.getParameter("terminologyEndpoint").getResource()).getAddress();
 			validationSupport.addValidationSupport(new ExtendedRemoteTerminologyServiceValidationSupport(context, terminologyUrl));
 		}
 
@@ -105,7 +107,8 @@ public class TransformProvider {
 			throw new InvalidRequestException("No StructureMap parameter");
 		}
 
-		Mapper mapper = new Mapper(hapiContext, fhirPathEngine, null, myStructureMapDao, clientStructureMap);
+		Mapper mapper = new Mapper(hapiContext, fhirPathEngine,
+			terminologyUrl != null ? new TransformerService(terminologyUrl) : null, myStructureMapDao, clientStructureMap);
 
 		////////////////////////////////////////////////////////////////
 

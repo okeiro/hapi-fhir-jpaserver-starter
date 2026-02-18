@@ -2028,7 +2028,8 @@ public class Mapper {
 						}
 					}
 				}
-				if (cmap == null) {
+				// Only look for a CM locally if no remote service is setup.
+				if (cmap == null && services == null) {
 					cmap = worker.fetchResource(ConceptMap.class, conceptMapUrl);
 				}
 			}
