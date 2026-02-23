@@ -21,9 +21,9 @@ import java.util.Set;
 
 import static org.apache.commons.lang3.ObjectUtils.defaultIfNull;
 
+@EnableConfigurationProperties
 @ConfigurationProperties(prefix = "hapi.fhir")
 @Configuration
-@EnableConfigurationProperties
 public class AppProperties {
 
 	private final Set<String> auto_version_reference_at_paths = new HashSet<>();
@@ -62,7 +62,15 @@ public class AppProperties {
 	private Boolean filter_search_enabled = true;
 	private Boolean graphql_enabled = false;
 	private Boolean binary_storage_enabled = false;
-	private Integer inline_resource_storage_below_size = 0;
+
+	public enum BinaryStorageMode {
+		DATABASE,
+		FILESYSTEM
+	}
+
+	private BinaryStorageMode binary_storage_mode = BinaryStorageMode.DATABASE;
+	private String binary_storage_filesystem_base_directory;
+	private Integer binary_storage_minimum_binary_size;
 	private Boolean bulk_export_enabled = false;
 	private Boolean bulk_import_enabled = false;
 	private Boolean default_pretty_print = true;
@@ -119,6 +127,13 @@ public class AppProperties {
 	private Map<String, RemoteSystem> remote_terminology_service = null;
 	private Boolean match_url_cache_enabled = false;
 	private Boolean index_storage_optimized = false;
+	private Boolean mark_resources_for_reindexing_upon_search_parameter_change = true;
+	private Integer reindex_thread_count = null;
+	private Integer expunge_thread_count = null;
+	private Elasticsearch elasticsearch = null;
+	private SentryProperties sentry = null;
+
+	private Integer bulk_export_file_retention_period_hours = 2;
 
 	public List<String> getCustomInterceptorClasses() {
 		return custom_interceptor_classes;
@@ -492,12 +507,28 @@ public class AppProperties {
 		this.binary_storage_enabled = binary_storage_enabled;
 	}
 
-	public Integer getInline_resource_storage_below_size() {
-		return inline_resource_storage_below_size;
+	public BinaryStorageMode getBinary_storage_mode() {
+		return binary_storage_mode;
 	}
 
-	public void setInline_resource_storage_below_size(Integer inline_resource_storage_below_size) {
-		this.inline_resource_storage_below_size = inline_resource_storage_below_size;
+	public void setBinary_storage_mode(BinaryStorageMode binary_storage_mode) {
+		this.binary_storage_mode = binary_storage_mode;
+	}
+
+	public String getBinary_storage_filesystem_base_directory() {
+		return binary_storage_filesystem_base_directory;
+	}
+
+	public void setBinary_storage_filesystem_base_directory(String binary_storage_filesystem_base_directory) {
+		this.binary_storage_filesystem_base_directory = binary_storage_filesystem_base_directory;
+	}
+
+	public Integer getBinary_storage_minimum_binary_size() {
+		return binary_storage_minimum_binary_size;
+	}
+
+	public void setBinary_storage_minimum_binary_size(Integer binary_storage_minimum_binary_size) {
+		this.binary_storage_minimum_binary_size = binary_storage_minimum_binary_size;
 	}
 
 	public Boolean getBulk_export_enabled() {
@@ -794,6 +825,32 @@ public class AppProperties {
 		index_storage_optimized = theIndex_storage_optimized;
 	}
 
+	public boolean getMark_resources_for_reindexing_upon_search_parameter_change() {
+		return defaultIfNull(mark_resources_for_reindexing_upon_search_parameter_change, true);
+	}
+
+	public void setMark_resources_for_reindexing_upon_search_parameter_change(
+			Boolean mark_resources_for_reindexing_upon_search_parameter_change) {
+		this.mark_resources_for_reindexing_upon_search_parameter_change =
+				mark_resources_for_reindexing_upon_search_parameter_change;
+	}
+
+	public Integer getReindex_thread_count() {
+		return reindex_thread_count;
+	}
+
+	public void setReindex_thread_count(Integer reindex_thread_count) {
+		this.reindex_thread_count = reindex_thread_count;
+	}
+
+	public Integer getExpunge_thread_count() {
+		return expunge_thread_count;
+	}
+
+	public void setExpunge_thread_count(Integer expunge_thread_count) {
+		this.expunge_thread_count = expunge_thread_count;
+	}
+
 	public JpaStorageSettings.StoreMetaSourceInformationEnum getStore_meta_source_information() {
 		return store_meta_source_information;
 	}
@@ -801,6 +858,30 @@ public class AppProperties {
 	public void setStore_meta_source_information(
 			JpaStorageSettings.StoreMetaSourceInformationEnum store_meta_source_information) {
 		this.store_meta_source_information = store_meta_source_information;
+	}
+
+	public Elasticsearch getElasticsearch() {
+		return elasticsearch;
+	}
+
+	public void setElasticsearch(Elasticsearch elasticsearch) {
+		this.elasticsearch = elasticsearch;
+	}
+
+	public SentryProperties getSentry() {
+		return sentry;
+	}
+
+	public void setSentry(SentryProperties sentry) {
+		this.sentry = sentry;
+	}
+
+	public Integer getBulk_export_file_retention_period_hours() {
+		return bulk_export_file_retention_period_hours;
+	}
+
+	public void setBulk_export_file_retention_period_hours(Integer bulk_export_file_retention_period_hours) {
+		this.bulk_export_file_retention_period_hours = bulk_export_file_retention_period_hours;
 	}
 
 	public static class Cors {
@@ -1150,6 +1231,108 @@ public class AppProperties {
 			public void setQuitWait(Boolean quitWait) {
 				this.quitWait = quitWait;
 			}
+		}
+	}
+
+	public static class Elasticsearch {
+
+		private String index_prefix = "";
+
+		public String getIndex_prefix() {
+			return index_prefix;
+		}
+
+		public void setIndex_prefix(String index_prefix) {
+			this.index_prefix = index_prefix;
+		}
+	}
+
+	public static class SentryProperties {
+		/**
+		 * Master switch. Must be true AND DSN must be provided to activate Sentry.
+		 */
+		private boolean enabled = false;
+		/**
+		 * Sentry DSN.
+		 */
+		private String dsn;
+		/**
+		 * Environment tag (dev, staging, prod, etc.).
+		 */
+		private String environment;
+		/**
+		 * Release version (e.g. git SHA or app version).
+		 */
+		private String release;
+		/**
+		 * Logical service name (e.g. hapi-jpa-starter, mapping-engine). Default: hapi-jpa-starter
+		 */
+		private String serviceName = "hapi-jpa-starter";
+		/**
+		 * Enable performance tracing.
+		 */
+		private boolean tracesEnabled = false;
+		/**
+		 * Sample rate for tracing (0.0 to 1.0).
+		 */
+		private double tracesSampleRate = 0.0;
+
+		// --- getters & setters ---
+
+		public boolean isEnabled() {
+			return enabled;
+		}
+
+		public void setEnabled(boolean enabled) {
+			this.enabled = enabled;
+		}
+
+		public String getDsn() {
+			return dsn;
+		}
+
+		public void setDsn(String dsn) {
+			this.dsn = dsn;
+		}
+
+		public String getEnvironment() {
+			return environment;
+		}
+
+		public void setEnvironment(String environment) {
+			this.environment = environment;
+		}
+
+		public String getRelease() {
+			return release;
+		}
+
+		public void setRelease(String release) {
+			this.release = release;
+		}
+
+		public String getServiceName() {
+			return serviceName;
+		}
+
+		public void setServiceName(String serviceName) {
+			this.serviceName = serviceName;
+		}
+
+		public boolean isTracesEnabled() {
+			return tracesEnabled;
+		}
+
+		public void setTracesEnabled(boolean tracesEnabled) {
+			this.tracesEnabled = tracesEnabled;
+		}
+
+		public double getTracesSampleRate() {
+			return tracesSampleRate;
+		}
+
+		public void setTracesSampleRate(double tracesSampleRate) {
+			this.tracesSampleRate = tracesSampleRate;
 		}
 	}
 }
