@@ -49,6 +49,21 @@ docker run -p 8080:8080 -e hapi.fhir.default_encoding=xml hapiproject/hapi:lates
 
 HAPI looks in the environment variables for properties in the [application.yaml](https://github.com/hapifhir/hapi-fhir-jpaserver-starter/blob/master/src/main/resources/application.yaml) file for defaults.
 
+### Binary storage configuration
+
+To stream large `Binary` payloads to disk instead of the database, configure the starter with filesystem storage properties:
+
+```
+hapi:
+  fhir:
+    binary_storage_enabled: true
+    binary_storage_mode: FILESYSTEM
+    binary_storage_filesystem_base_directory: /binstore
+    # inline_resource_storage_below_size: 131072   # optional override
+```
+
+When `binary_storage_mode` is set to `FILESYSTEM` and `inline_resource_storage_below_size` is omitted, the starter automatically applies a 102400 byte (100 KB) inline threshold so smaller payloads remain in the database. Ensure the directory you point to is writable by the process (for Docker builds, mount it into the container with appropriate permissions).
+
 ### Configuration via overridden application.yaml file and using Docker
 
 You can customize HAPI by telling HAPI to look for the configuration file in a different location, eg.:
@@ -58,12 +73,30 @@ docker run -p 8090:8080 -v $(pwd)/yourLocalFolder:/configs -e "--spring.config.l
 ```
 Here, the configuration file (*another.application.yaml*) is placed locally in the folder *yourLocalFolder*.
 
-
-
 ```
 docker run -p 8090:8080 -e "--spring.config.location=classpath:/another.application.yaml" hapiproject/hapi:latest
 ```
 Here, the configuration file (*another.application.yaml*) is part of the compiled set of resources.
+
+### Configuration with additional override files
+
+You can layer additional configuration files on top of the default application.yaml while preserving all the base settings. This approach allows you to create specific override files for different environments without duplicating the entire configuration.
+
+```bash
+# Using Maven
+mvn spring-boot:run -Dspring-boot.run.arguments="--spring.config.additional-location=classpath:your-overrides.yaml"
+
+# Using Docker
+docker run -p 8080:8080 -e "--spring.config.additional-location=classpath:your-overrides.yaml" hapiproject/hapi:latest
+```
+
+Here, the additional configuration file (*your-overrides.yaml*) contains only the specific properties you want to override or add, while all default values from application.yaml remain unchanged.
+
+### One-liner for quickly getting an Implementation Guide installed into HAPI
+
+```
+docker run -p 8080:8080 -e "hapi.fhir.implementationguides.someIg.name=com.org.something" -e "hapi.fhir.implementationguides.someIg.version=1.2.3" -e "hapi.fhir.implementationguides.someIg.packageUrl=https://build.fhir.org/ig/yourOrg/yourIg/package.tgz" -e "hapi.fhir.implementationguides.someIg.installMode=STORE_AND_INSTALL" hapiproject/hapi:latest
+```
 
 ### Example using ``docker-compose.yml`` for docker-compose
 
@@ -430,6 +463,95 @@ Because the integration tests within the project rely on the default H2 database
 NOTE: MS SQL Server by default uses a case-insensitive codepage. This will cause errors with some operations - such as when expanding case-sensitive valuesets (UCUM) as there are unique indexes defined on the terminology tables for codes.
 It is recommended to deploy a case-sensitive database prior to running HAPI FHIR when using MS SQL Server to avoid these and potentially other issues.
 
+### Sentry (optional error & performance monitoring)
+
+This project supports optional Sentry error reporting and (optionally) performance tracing.
+- Disabled by default: if Sentry is not enabled or no DSN is provided, the application runs normally and no events are sent.
+- Opt-in only: enablement is controlled by configuration (no customer-specific branch).
+- Data protection: the integration is designed so that FHIR payloads / request bodies must never be sent to Sentry.
+
+#### Configuration
+
+Add the following configuration to your application.yaml (or application.properties).
+```yaml
+hapi:
+  fhir:
+    sentry:
+      enabled: false
+      dsn: ${HAPI_SENTRY_DSN:}
+      environment: ${SENTRY_ENVIRONMENT:local}
+      release: ${SENTRY_RELEASE:dev}
+      service-name: hapi-jpa-starter
+
+      # Optional tracing / performance
+      traces-enabled: false
+      traces-sample-rate: 0.0
+```
+
+#### Properties
+
+| Property                              |           Required |            Default | Description                                                                                  |
+| ------------------------------------- | -----------------: | -----------------: | -------------------------------------------------------------------------------------------- |
+| `hapi.fhir.sentry.enabled`            |                 no |            `false` | Master switch. Must be `true` to activate Sentry.                                            |
+| `hapi.fhir.sentry.dsn`                | yes (when enabled) |              empty | Sentry DSN (URL starting with `https://...`). If missing/invalid, Sentry is not initialized. |
+| `hapi.fhir.sentry.environment`        |                 no |            `local` | Environment tag shown in Sentry (e.g. `dev`, `staging`, `prod`).                             |
+| `hapi.fhir.sentry.release`            |                 no |              `dev` | Release tag (e.g. app version or git SHA).                                                   |
+| `hapi.fhir.sentry.service-name`       |                 no | `hapi-jpa-starter` | Stable service name used to distinguish services in Sentry.                                  |
+| `hapi.fhir.sentry.traces-enabled`     |                 no |            `false` | Enables performance tracing.                                                                 |
+| `hapi.fhir.sentry.traces-sample-rate` |                 no |              `0.0` | Tracing sample rate between `0.0` and `1.0`. Only applied if tracing is enabled.             |
+
+> Recommendation: use a dedicated env var like HAPI_SENTRY_DSN instead of SENTRY_DSN to keep strict control and avoid unexpected SDK auto-configuration.
+
+#### Enable Sentry
+
+To enable Sentry, set:
+- hapi.fhir.sentry.enabled=true
+- a valid DSN (typically via environment variable)
+
+Example (Linux/macOS):
+```bash
+export HAPI_SENTRY_DSN="https://<publicKey>@o<orgId>.ingest.sentry.io/<projectId>"
+export SENTRY_ENVIRONMENT="staging"
+export SENTRY_RELEASE="2026.02.23-<gitsha>"
+```
+Then start the application normally.
+
+#### Enable performance tracing (optional)
+
+Tracing is disabled by default. To enable it:
+
+```yaml
+hapi:
+  fhir:
+    sentry:
+      traces-enabled: true
+      traces-sample-rate: 0.05
+```
+
+Guidance:
+- Start with a low sample rate in production (e.g. 0.01 to 0.10) depending on traffic and cost.
+- Keep it 0.0 in environments where you only need error reporting.
+
+#### What is reported
+
+When enabled, the application can report:
+- Unhandled exceptions (runtime failures not handled by application logic)
+- Handled server errors explicitly captured by the runtime (e.g. HAPI request pipeline errors that are converted into OperationOutcome)
+- Optional request performance traces when tracing is enabled
+
+#### Failure behavior
+
+If Sentry is unreachable or misconfigured, the application continues to run normally.
+
+#### Privacy / sensitive data
+
+This runtime is intended for healthcare/FHIR contexts:
+- Request/response bodies must never be sent to Sentry.
+- Avoid adding FHIR resources (JSON/XML) as extras/attachments.
+- Scrub sensitive headers and query parameters before sending events.
+
+> If you add additional Sentry context/tags/breadcrumbs in custom code, ensure they do not contain PHI/PII (patient identifiers, resource payloads, tokens, etc.).
+
 ## Adding custom interceptors
 Custom interceptors can be registered with the server by including the property `hapi.fhir.custom-interceptor-classes`. This will take a comma separated list of fully-qualified class names which will be registered with the server.
 Interceptors will be discovered in one of two ways:
@@ -567,7 +689,7 @@ The server may be configured with subscription support by enabling properties in
 
 ## Enabling Clinical Reasoning
 
-Set `hapi.fhir.cr.enabled=true` in the [application.yaml](https://github.com/hapifhir/hapi-fhir-jpaserver-starter/blob/master/src/main/resources/application.yaml) file to enable [Clinical Quality Language](https://cql.hl7.org/) on this server.  An alternate settings file, [cds.application.yaml](https://github.com/hapifhir/hapi-fhir-jpaserver-starter/blob/master/src/main/resources/cds.application.yaml), exists with the Clinical Reasoning module enabled and default settings that have been found to work with most CDS and dQM test cases.
+Set `hapi.fhir.cr.enabled=true` in the [application.yaml](https://github.com/hapifhir/hapi-fhir-jpaserver-starter/blob/master/src/main/resources/application.yaml) file to enable [Clinical Quality Language](https://cql.hl7.org/) on this server.  An alternate settings file, [application-cds.yaml](https://github.com/hapifhir/hapi-fhir-jpaserver-starter/blob/master/src/main/resources/application-cds.yaml), exists with the Clinical Reasoning module enabled and default settings that have been found to work with most CDS and dQM test cases.
 
 ## Enabling CDS Hooks
 
@@ -666,3 +788,7 @@ docker run --rm -it -p 8080:8080 \
 ```
 
 You can configure the agent using environment variables or Java system properties, see <https://opentelemetry.io/docs/instrumentation/java/automatic/agent-config/> for details.
+
+## Enable MCP
+
+MCP capabilities can be enabled by setting the `spring.ai.mcp.server.enabled` to `true`. This will enable the MCP server and expose the MCP endpoints. The MCP endpoint is currently hardcoded to `/mcp/message` and can be tried out by running e.g. `npx @modelcontextprotocol/inspector` and connect to http://localhost:8080/mcp/message using Streamable HTTP. Spring AI MCP Server Auto Configuration is currently not supported.
