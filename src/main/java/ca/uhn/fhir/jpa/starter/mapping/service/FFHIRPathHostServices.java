@@ -6,9 +6,11 @@ import org.hl7.fhir.exceptions.FHIRException;
 import org.hl7.fhir.exceptions.PathEngineException;
 import org.hl7.fhir.r4.fhirpath.FHIRPathEngine;
 import org.hl7.fhir.r4.fhirpath.FHIRPathUtilityClasses;
+import org.hl7.fhir.r4.fhirpath.IHostApplicationServices;
 import org.hl7.fhir.r4.fhirpath.TypeDetails;
 import org.hl7.fhir.r4.model.Base;
 import org.hl7.fhir.r4.model.ValueSet;
+import org.hl7.fhir.utilities.fhirpath.FHIRPathConstantEvaluationMode;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -16,9 +18,10 @@ import java.util.List;
 import static ca.uhn.fhir.jpa.starter.mapping.model.Variable.VariableMode.INPUT;
 import static ca.uhn.fhir.jpa.starter.mapping.model.Variable.VariableMode.OUTPUT;
 
-public class FFHIRPathHostServices implements FHIRPathEngine.IEvaluationContext {
+public class FFHIRPathHostServices implements IHostApplicationServices {
 
-	public List<Base> resolveConstant(FHIRPathEngine fpe, Object appContext, String name, boolean beforeContext, boolean explicitConstant) throws PathEngineException {
+	@Override
+	public List<Base> resolveConstant(FHIRPathEngine fpe, Object appContext, String name, FHIRPathConstantEvaluationMode fhirPathConstantEvaluationMode) throws PathEngineException {
 		Variables vars = (Variables) appContext;
 		Object res = vars.get(INPUT, name);
 		if (res == null)
@@ -30,7 +33,7 @@ public class FFHIRPathHostServices implements FHIRPathEngine.IEvaluationContext 
 	}
 
 	@Override
-	public TypeDetails resolveConstantType(FHIRPathEngine fpe, Object appContext, String name, boolean explicitConstant) throws PathEngineException {
+	public TypeDetails resolveConstantType(FHIRPathEngine fpe, Object appContext, String s, FHIRPathConstantEvaluationMode fhirPathConstantEvaluationMode) throws PathEngineException {
 		throw new Error("Not Implemented Yet");
 	}
 
