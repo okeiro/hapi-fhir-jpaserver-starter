@@ -1,0 +1,10 @@
+hapi:
+  fhir:
+    sentry:
+      enabled: true
+      dsn: ${HAPI_SENTRY_DSN:}
+      environment: ${HAPI_SENTRY_ENVIRONMENT:local}
+      release: ${HAPI_SENTRY_RELEASE:dev}
+      service-name: hapi-jpa-starter
+      traces-enabled: false
+      traces-sample-rate: 0.0

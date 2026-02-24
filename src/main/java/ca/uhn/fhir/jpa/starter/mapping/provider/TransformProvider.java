@@ -7,6 +7,7 @@ import ca.uhn.fhir.jpa.api.dao.IFhirResourceDao;
 import ca.uhn.fhir.jpa.searchparam.SearchParameterMap;
 import ca.uhn.fhir.jpa.starter.mapping.service.FFHIRPathHostServices;
 import ca.uhn.fhir.jpa.starter.mapping.service.Mapper;
+import ca.uhn.fhir.jpa.starter.mapping.service.TransformerService;
 import ca.uhn.fhir.jpa.starter.mapping.validation.ExtendedRemoteTerminologyServiceValidationSupport;
 import ca.uhn.fhir.jpa.starter.mapping.validation.PersistedValidationSupportClass;
 import ca.uhn.fhir.rest.annotation.Operation;
@@ -26,7 +27,6 @@ import org.hl7.fhir.r4.model.UriType;
 
 import java.util.List;
 
-
 public class TransformProvider {
 
 	private final IFhirResourceDao<StructureMap> myStructureMapDao;
@@ -41,14 +41,15 @@ public class TransformProvider {
 	public Parameters transform(@ResourceParam Parameters parameters) {
 
 		FhirContext context = FhirContext.forR4();
-		ValidationSupportChain validationSupport = new ValidationSupportChain(
-			getValidationSupport(),
-			new DefaultProfileValidationSupport(context)
-		);
+		ValidationSupportChain validationSupport =
+				new ValidationSupportChain(getValidationSupport(), new DefaultProfileValidationSupport(context));
 
+		String terminologyUrl = null;
 		if (parameters.getParameter("terminologyEndpoint") != null) {
-			String terminologyUrl = ((Endpoint) parameters.getParameter("terminologyEndpoint").getResource()).getAddress();
-			validationSupport.addValidationSupport(new ExtendedRemoteTerminologyServiceValidationSupport(context, terminologyUrl));
+			terminologyUrl =
+					((Endpoint) parameters.getParameter("terminologyEndpoint").getResource()).getAddress();
+			validationSupport.addValidationSupport(
+					new ExtendedRemoteTerminologyServiceValidationSupport(context, terminologyUrl));
 		}
 
 		HapiWorkerContext hapiContext = new HapiWorkerContext(context, validationSupport);
@@ -58,7 +59,8 @@ public class TransformProvider {
 
 		IGenericClient clientStructureMap = null;
 		if (parameters.getParameter("structureMapEndpoint") != null) {
-			String structureMapServer = ((Endpoint) parameters.getParameter("structureMapEndpoint").getResource()).getAddress();
+			String structureMapServer =
+					((Endpoint) parameters.getParameter("structureMapEndpoint").getResource()).getAddress();
 			clientStructureMap = context.newRestfulGenericClient(structureMapServer);
 		}
 
@@ -67,34 +69,39 @@ public class TransformProvider {
 		StructureMap structureMap = null;
 
 		if (parameters.getParameter("structureMap") != null) {
-			structureMap = ((StructureMap) parameters.getParameter("structureMap").getResource());
+			structureMap =
+					((StructureMap) parameters.getParameter("structureMap").getResource());
 		} else if (parameters.getParameter("source") != null) {
-			String structureMapUrl = ((UriType) parameters.getParameter("source").getValue()).getValue();
+			String structureMapUrl =
+					((UriType) parameters.getParameter("source").getValue()).getValue();
 			if (clientStructureMap != null) {
 				try {
 					structureMap = clientStructureMap
-						.search()
-						.forResource(StructureMap.class)
-						.where(StructureMap.URL.matches().value(structureMapUrl))
-						.returnBundle(org.hl7.fhir.r4.model.Bundle.class)
-						.execute()
-						.getEntry()
-						.stream()
-						.filter(e -> e.getResource() instanceof StructureMap)
-						.map(e -> (StructureMap) e.getResource())
-						.findFirst()
-						.orElse(null);
+							.search()
+							.forResource(StructureMap.class)
+							.where(StructureMap.URL.matches().value(structureMapUrl))
+							.returnBundle(org.hl7.fhir.r4.model.Bundle.class)
+							.execute()
+							.getEntry()
+							.stream()
+							.filter(e -> e.getResource() instanceof StructureMap)
+							.map(e -> (StructureMap) e.getResource())
+							.findFirst()
+							.orElse(null);
 				} catch (Exception e) {
-					throw new InvalidRequestException("Failed to fetch StructureMap from remote server: " + structureMapUrl, e);
+					throw new InvalidRequestException(
+							"Failed to fetch StructureMap from remote server: " + structureMapUrl, e);
 				}
 			} else {
-				IBundleProvider search = myStructureMapDao.search(new SearchParameterMap()
-					.add("url", new UriParam(structureMapUrl)));
+				IBundleProvider search =
+						myStructureMapDao.search(new SearchParameterMap().add("url", new UriParam(structureMapUrl)));
 
 				if (search.isEmpty()) {
-					throw new InvalidRequestException(String.format("Did not find StructureMap with url '%s' !", structureMapUrl));
+					throw new InvalidRequestException(
+							String.format("Did not find StructureMap with url '%s' !", structureMapUrl));
 				} else if (search.size() > 1) {
-					throw new InvalidRequestException(String.format("Found multiple StructureMap with url '%s' !", structureMapUrl));
+					throw new InvalidRequestException(
+							String.format("Found multiple StructureMap with url '%s' !", structureMapUrl));
 				}
 
 				List<IBaseResource> resources = search.getResources(0, 1);
@@ -105,7 +112,12 @@ public class TransformProvider {
 			throw new InvalidRequestException("No StructureMap parameter");
 		}
 
-		Mapper mapper = new Mapper(hapiContext, fhirPathEngine, null, myStructureMapDao, clientStructureMap);
+		Mapper mapper = new Mapper(
+				hapiContext,
+				fhirPathEngine,
+				terminologyUrl != null ? new TransformerService(terminologyUrl) : null,
+				myStructureMapDao,
+				clientStructureMap);
 
 		////////////////////////////////////////////////////////////////
 

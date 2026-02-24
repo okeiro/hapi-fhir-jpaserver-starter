@@ -28,12 +28,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import javax.annotation.Nullable;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
+import javax.annotation.Nullable;
 
 import static org.apache.commons.lang3.StringUtils.isBlank;
 import static org.hl7.fhir.common.hapi.validation.support.ValidationConstants.LOINC_LOW;
@@ -41,275 +41,275 @@ import static org.hl7.fhir.common.hapi.validation.support.ValidationConstants.LO
 @Component
 public class PersistedValidationSupportClass implements IValidationSupport {
 
-    private static final Logger ourLog = LoggerFactory.getLogger(JpaPersistedResourceValidationSupport.class);
+	private static final Logger ourLog = LoggerFactory.getLogger(JpaPersistedResourceValidationSupport.class);
 
-    private final FhirContext myFhirContext;
-    private final IBaseResource myNoMatch;
+	private final FhirContext myFhirContext;
+	private final IBaseResource myNoMatch;
 
-    private DaoRegistry myDaoRegistry;
+	private DaoRegistry myDaoRegistry;
 
-    private ITermReadSvc myTermReadSvc;
+	private ITermReadSvc myTermReadSvc;
 
-    private Class<? extends IBaseResource> myCodeSystemType;
-    private Class<? extends IBaseResource> myStructureDefinitionType;
-    private Class<? extends IBaseResource> myValueSetType;
+	private Class<? extends IBaseResource> myCodeSystemType;
+	private Class<? extends IBaseResource> myStructureDefinitionType;
+	private Class<? extends IBaseResource> myValueSetType;
 
-    // TODO: JA2 We shouldn't need to cache here, but we probably still should since the
-    // TermReadSvcImpl calls these methods as a part of its "isCodeSystemSupported" calls.
-    // We should modify CachingValidationSupport to cache the results of "isXXXSupported"
-    // at which point we could do away with this cache
-    private Cache<String, IBaseResource> myLoadCache = CacheFactory.build(TimeUnit.MINUTES.toMillis(1), 1000);
+	// TODO: JA2 We shouldn't need to cache here, but we probably still should since the
+	// TermReadSvcImpl calls these methods as a part of its "isCodeSystemSupported" calls.
+	// We should modify CachingValidationSupport to cache the results of "isXXXSupported"
+	// at which point we could do away with this cache
+	private Cache<String, IBaseResource> myLoadCache = CacheFactory.build(TimeUnit.MINUTES.toMillis(1), 1000);
 
-    /**
-     * Constructor
-     */
-    @Autowired
-    public PersistedValidationSupportClass(FhirContext theFhirContext, DaoRegistry theDaoRegistry, ITermReadSvc theTermReadSvc) {
-        super();
-        Validate.notNull(theFhirContext);
-        myFhirContext = theFhirContext;
-        myDaoRegistry = theDaoRegistry;
-        myTermReadSvc = theTermReadSvc;
+	/**
+	 * Constructor
+	 */
+	@Autowired
+	public PersistedValidationSupportClass(
+			FhirContext theFhirContext, DaoRegistry theDaoRegistry, ITermReadSvc theTermReadSvc) {
+		super();
+		Validate.notNull(theFhirContext);
+		myFhirContext = theFhirContext;
+		myDaoRegistry = theDaoRegistry;
+		myTermReadSvc = theTermReadSvc;
 
-        myNoMatch = myFhirContext.getResourceDefinition("Basic").newInstance();
-    }
+		myNoMatch = myFhirContext.getResourceDefinition("Basic").newInstance();
+	}
 
+	@Override
+	public IBaseResource fetchCodeSystem(String theSystem) {
+		if (TermReadSvcUtil.isLoincUnversionedCodeSystem(theSystem)) {
+			Optional<IBaseResource> currentCSOpt = getCodeSystemCurrentVersion(new UriType(theSystem));
+			if (!currentCSOpt.isPresent()) {
+				ourLog.info("Couldn't find current version of CodeSystem: " + theSystem);
+			}
+			return currentCSOpt.orElse(null);
+		}
 
-    @Override
-    public IBaseResource fetchCodeSystem(String theSystem) {
-        if (TermReadSvcUtil.isLoincUnversionedCodeSystem(theSystem)) {
-            Optional<IBaseResource> currentCSOpt = getCodeSystemCurrentVersion(new UriType(theSystem));
-            if (!currentCSOpt.isPresent()) {
-                ourLog.info("Couldn't find current version of CodeSystem: " + theSystem);
-            }
-            return currentCSOpt.orElse(null);
-        }
+		return fetchResource(myCodeSystemType, theSystem);
+	}
 
-        return fetchResource(myCodeSystemType, theSystem);
-    }
+	/**
+	 * Obtains the current version of a CodeSystem using the fact that the current
+	 * version is always pointed by the ForcedId for the no-versioned CS
+	 */
+	private Optional<IBaseResource> getCodeSystemCurrentVersion(UriType theUrl) {
+		if (!theUrl.getValueAsString().contains(LOINC_LOW)) {
+			return Optional.empty();
+		}
 
-    /**
-     * Obtains the current version of a CodeSystem using the fact that the current
-     * version is always pointed by the ForcedId for the no-versioned CS
-     */
-    private Optional<IBaseResource> getCodeSystemCurrentVersion(UriType theUrl) {
-        if (!theUrl.getValueAsString().contains(LOINC_LOW)) {
-            return Optional.empty();
-        }
+		return myTermReadSvc.readCodeSystemByForcedId(LOINC_LOW);
+	}
 
-        return myTermReadSvc.readCodeSystemByForcedId(LOINC_LOW);
-    }
+	@Override
+	public IBaseResource fetchValueSet(String theSystem) {
+		if (TermReadSvcUtil.isLoincUnversionedValueSet(theSystem)) {
+			Optional<IBaseResource> currentVSOpt = getValueSetCurrentVersion(new UriType(theSystem));
+			return currentVSOpt.orElse(null);
+		}
 
+		return fetchResource(myValueSetType, theSystem);
+	}
 
-    @Override
-    public IBaseResource fetchValueSet(String theSystem) {
-        if (TermReadSvcUtil.isLoincUnversionedValueSet(theSystem)) {
-            Optional<IBaseResource> currentVSOpt = getValueSetCurrentVersion(new UriType(theSystem));
-            return currentVSOpt.orElse(null);
-        }
+	/**
+	 * Obtains the current version of a ValueSet using the fact that the current
+	 * version is always pointed by the ForcedId for the no-versioned VS
+	 */
+	private Optional<IBaseResource> getValueSetCurrentVersion(UriType theUrl) {
+		Optional<String> vsIdOpt = TermReadSvcUtil.getValueSetId(theUrl.getValueAsString());
+		if (!vsIdOpt.isPresent()) {
+			return Optional.empty();
+		}
 
-        return fetchResource(myValueSetType, theSystem);
-    }
+		IFhirResourceDao<? extends IBaseResource> valueSetResourceDao = myDaoRegistry.getResourceDao(myValueSetType);
+		IBaseResource valueSet = valueSetResourceDao.read(new IdDt("ValueSet", vsIdOpt.get()));
+		return Optional.ofNullable(valueSet);
+	}
 
-    /**
-     * Obtains the current version of a ValueSet using the fact that the current
-     * version is always pointed by the ForcedId for the no-versioned VS
-     */
-    private Optional<IBaseResource> getValueSetCurrentVersion(UriType theUrl) {
-        Optional<String> vsIdOpt = TermReadSvcUtil.getValueSetId(theUrl.getValueAsString());
-        if (!vsIdOpt.isPresent()) {
-            return Optional.empty();
-        }
+	@Override
+	public IBaseResource fetchStructureDefinition(String theUrl) {
+		return fetchResource(myStructureDefinitionType, theUrl);
+	}
 
-        IFhirResourceDao<? extends IBaseResource> valueSetResourceDao = myDaoRegistry.getResourceDao(myValueSetType);
-        IBaseResource valueSet = valueSetResourceDao.read(new IdDt("ValueSet", vsIdOpt.get()));
-        return Optional.ofNullable(valueSet);
-    }
+	@SuppressWarnings("unchecked")
+	@Nullable
+	@Override
+	public <T extends IBaseResource> List<T> fetchAllStructureDefinitions() {
+		if (!myDaoRegistry.isResourceTypeSupported("StructureDefinition")) {
+			return null;
+		}
+		IBundleProvider search = myDaoRegistry
+				.getResourceDao("StructureDefinition")
+				.search(new SearchParameterMap().setLoadSynchronousUpTo(1000));
+		return (List<T>) search.getResources(0, 1000);
+	}
 
+	@Override
+	@SuppressWarnings({"unchecked", "unused"})
+	public <T extends IBaseResource> T fetchResource(@Nullable Class<T> theClass, String theUri) {
+		if (isBlank(theUri)) {
+			return null;
+		}
 
-    @Override
-    public IBaseResource fetchStructureDefinition(String theUrl) {
-        return fetchResource(myStructureDefinitionType, theUrl);
-    }
+		String key = theClass + " " + theUri;
+		IBaseResource fetched = myLoadCache.get(key, t -> doFetchResource(theClass, theUri));
 
-    @SuppressWarnings("unchecked")
-    @Nullable
-    @Override
-    public <T extends IBaseResource> List<T> fetchAllStructureDefinitions() {
-        if (!myDaoRegistry.isResourceTypeSupported("StructureDefinition")) {
-            return null;
-        }
-        IBundleProvider search = myDaoRegistry.getResourceDao("StructureDefinition").search(new SearchParameterMap().setLoadSynchronousUpTo(1000));
-        return (List<T>) search.getResources(0, 1000);
-    }
+		if (fetched == myNoMatch) {
+			return null;
+		}
 
-    @Override
-    @SuppressWarnings({"unchecked", "unused"})
-    public <T extends IBaseResource> T fetchResource(@Nullable Class<T> theClass, String theUri) {
-        if (isBlank(theUri)) {
-            return null;
-        }
+		return (T) fetched;
+	}
 
-        String key = theClass + " " + theUri;
-        IBaseResource fetched = myLoadCache.get(key, t -> doFetchResource(theClass, theUri));
+	private <T extends IBaseResource> IBaseResource doFetchResource(@Nullable Class<T> theClass, String theUri) {
+		if (theClass == null) {
+			Supplier<IBaseResource>[] fetchers = new Supplier[] {
+				() -> doFetchResource(ValueSet.class, theUri),
+				() -> doFetchResource(CodeSystem.class, theUri),
+				() -> doFetchResource(StructureDefinition.class, theUri)
+			};
+			return Arrays.stream(fetchers)
+					.map(t -> t.get())
+					.filter(t -> t != myNoMatch)
+					.findFirst()
+					.orElse(myNoMatch);
+		}
 
-        if (fetched == myNoMatch) {
-            return null;
-        }
+		IdType id = new IdType(theUri);
+		boolean localReference = false;
+		if (id.hasBaseUrl() == false && id.hasIdPart() == true) {
+			localReference = true;
+		}
 
-        return (T) fetched;
-    }
+		String resourceName = myFhirContext.getResourceType(theClass);
+		IBundleProvider search;
+		switch (resourceName) {
+			case "ValueSet":
+				if (localReference) {
+					SearchParameterMap params = new SearchParameterMap();
+					params.setLoadSynchronousUpTo(1);
+					params.add(IAnyResource.SP_RES_ID, new StringParam(theUri));
+					search = myDaoRegistry.getResourceDao(resourceName).search(params);
+					if (search.size() == 0) {
+						params = new SearchParameterMap();
+						params.setLoadSynchronousUpTo(1);
+						params.add(ValueSet.SP_URL, new UriParam(theUri));
+						search = myDaoRegistry.getResourceDao(resourceName).search(params);
+					}
+				} else {
+					int versionSeparator = theUri.lastIndexOf('|');
+					SearchParameterMap params = new SearchParameterMap();
+					params.setLoadSynchronousUpTo(1);
+					if (versionSeparator != -1) {
+						params.add(ValueSet.SP_VERSION, new TokenParam(theUri.substring(versionSeparator + 1)));
+						params.add(ValueSet.SP_URL, new UriParam(theUri.substring(0, versionSeparator)));
+					} else {
+						params.add(ValueSet.SP_URL, new UriParam(theUri));
+					}
+					params.setSort(new SortSpec("_lastUpdated").setOrder(SortOrderEnum.DESC));
+					search = myDaoRegistry.getResourceDao(resourceName).search(params);
 
-    private <T extends IBaseResource> IBaseResource doFetchResource(@Nullable Class<T> theClass, String theUri) {
-        if (theClass == null) {
-            Supplier<IBaseResource>[] fetchers = new Supplier[]{
-                    () -> doFetchResource(ValueSet.class, theUri),
-                    () -> doFetchResource(CodeSystem.class, theUri),
-                    () -> doFetchResource(StructureDefinition.class, theUri)
-            };
-            return Arrays
-                    .stream(fetchers)
-                    .map(t -> t.get())
-                    .filter(t -> t != myNoMatch)
-                    .findFirst()
-                    .orElse(myNoMatch);
-        }
+					if (search.isEmpty()
+							&& myFhirContext.getVersion().getVersion().isOlderThan(FhirVersionEnum.DSTU3)) {
+						params = new SearchParameterMap();
+						params.setLoadSynchronousUpTo(1);
+						if (versionSeparator != -1) {
+							params.add(ValueSet.SP_VERSION, new TokenParam(theUri.substring(versionSeparator + 1)));
+							params.add("system", new UriParam(theUri.substring(0, versionSeparator)));
+						} else {
+							params.add("system", new UriParam(theUri));
+						}
+						params.setSort(new SortSpec("_lastUpdated").setOrder(SortOrderEnum.DESC));
+						search = myDaoRegistry.getResourceDao(resourceName).search(params);
+					}
+				}
+				break;
+			case "StructureDefinition": {
+				// Don't allow the core FHIR definitions to be overwritten
+				if (theUri.startsWith("http://hl7.org/fhir/StructureDefinition/")) {
+					String typeName = theUri.substring("http://hl7.org/fhir/StructureDefinition/".length());
+					if (myFhirContext.getElementDefinition(typeName) != null) {
+						return myNoMatch;
+					}
+				}
+				SearchParameterMap params = new SearchParameterMap();
+				params.setLoadSynchronousUpTo(1);
+				params.add(StructureDefinition.SP_URL, new UriParam(theUri));
+				search = myDaoRegistry.getResourceDao("StructureDefinition").search(params);
+				break;
+			}
+			case "Questionnaire": {
+				SearchParameterMap params = new SearchParameterMap();
+				params.setLoadSynchronousUpTo(1);
+				if (localReference || myFhirContext.getVersion().getVersion().isEquivalentTo(FhirVersionEnum.DSTU2)) {
+					params.add(IAnyResource.SP_RES_ID, new StringParam(id.getIdPart()));
+				} else {
+					params.add(Questionnaire.SP_URL, new UriParam(id.getValue()));
+				}
+				search = myDaoRegistry.getResourceDao("Questionnaire").search(params);
+				break;
+			}
+			case "CodeSystem": {
+				int versionSeparator = theUri.lastIndexOf('|');
+				SearchParameterMap params = new SearchParameterMap();
+				params.setLoadSynchronousUpTo(1);
+				if (versionSeparator != -1) {
+					params.add(CodeSystem.SP_VERSION, new TokenParam(theUri.substring(versionSeparator + 1)));
+					params.add(CodeSystem.SP_URL, new UriParam(theUri.substring(0, versionSeparator)));
+				} else {
+					params.add(CodeSystem.SP_URL, new UriParam(theUri));
+				}
+				params.setSort(new SortSpec("_lastUpdated").setOrder(SortOrderEnum.DESC));
+				search = myDaoRegistry.getResourceDao(resourceName).search(params);
+				break;
+			}
+			case "ImplementationGuide":
+			case "SearchParameter": {
+				SearchParameterMap params = new SearchParameterMap();
+				params.setLoadSynchronousUpTo(1);
+				params.add(ImplementationGuide.SP_URL, new UriParam(theUri));
+				search = myDaoRegistry.getResourceDao(resourceName).search(params);
+				break;
+			}
+			default:
+				// N.B.: this code assumes that we are searching by canonical URL and that the CanonicalType in question
+				// has a URL
+				SearchParameterMap params = new SearchParameterMap();
+				params.setLoadSynchronousUpTo(1);
+				params.add("url", new UriParam(theUri));
+				search = myDaoRegistry.getResourceDao(resourceName).search(params);
+		}
 
-        IdType id = new IdType(theUri);
-        boolean localReference = false;
-        if (id.hasBaseUrl() == false && id.hasIdPart() == true) {
-            localReference = true;
-        }
+		Integer size = search.size();
+		if (size == null || size == 0) {
+			return myNoMatch;
+		}
 
-        String resourceName = myFhirContext.getResourceType(theClass);
-        IBundleProvider search;
-        switch (resourceName) {
-            case "ValueSet":
-                if (localReference) {
-                    SearchParameterMap params = new SearchParameterMap();
-                    params.setLoadSynchronousUpTo(1);
-                    params.add(IAnyResource.SP_RES_ID, new StringParam(theUri));
-                    search = myDaoRegistry.getResourceDao(resourceName).search(params);
-                    if (search.size() == 0) {
-                        params = new SearchParameterMap();
-                        params.setLoadSynchronousUpTo(1);
-                        params.add(ValueSet.SP_URL, new UriParam(theUri));
-                        search = myDaoRegistry.getResourceDao(resourceName).search(params);
-                    }
-                } else {
-                    int versionSeparator = theUri.lastIndexOf('|');
-                    SearchParameterMap params = new SearchParameterMap();
-                    params.setLoadSynchronousUpTo(1);
-                    if (versionSeparator != -1) {
-                        params.add(ValueSet.SP_VERSION, new TokenParam(theUri.substring(versionSeparator + 1)));
-                        params.add(ValueSet.SP_URL, new UriParam(theUri.substring(0, versionSeparator)));
-                    } else {
-                        params.add(ValueSet.SP_URL, new UriParam(theUri));
-                    }
-                    params.setSort(new SortSpec("_lastUpdated").setOrder(SortOrderEnum.DESC));
-                    search = myDaoRegistry.getResourceDao(resourceName).search(params);
+		if (size > 1) {
+			ourLog.warn("Found multiple {} instances with URL search value of: {}", resourceName, theUri);
+		}
 
-                    if (search.isEmpty() && myFhirContext.getVersion().getVersion().isOlderThan(FhirVersionEnum.DSTU3)) {
-                        params = new SearchParameterMap();
-                        params.setLoadSynchronousUpTo(1);
-                        if (versionSeparator != -1) {
-                            params.add(ValueSet.SP_VERSION, new TokenParam(theUri.substring(versionSeparator + 1)));
-                            params.add("system", new UriParam(theUri.substring(0, versionSeparator)));
-                        } else {
-                            params.add("system", new UriParam(theUri));
-                        }
-                        params.setSort(new SortSpec("_lastUpdated").setOrder(SortOrderEnum.DESC));
-                        search = myDaoRegistry.getResourceDao(resourceName).search(params);
-                    }
+		return search.getResources(0, 1).get(0);
+	}
 
-                }
-                break;
-            case "StructureDefinition": {
-                // Don't allow the core FHIR definitions to be overwritten
-                if (theUri.startsWith("http://hl7.org/fhir/StructureDefinition/")) {
-                    String typeName = theUri.substring("http://hl7.org/fhir/StructureDefinition/".length());
-                    if (myFhirContext.getElementDefinition(typeName) != null) {
-                        return myNoMatch;
-                    }
-                }
-                SearchParameterMap params = new SearchParameterMap();
-                params.setLoadSynchronousUpTo(1);
-                params.add(StructureDefinition.SP_URL, new UriParam(theUri));
-                search = myDaoRegistry.getResourceDao("StructureDefinition").search(params);
-                break;
-            }
-            case "Questionnaire": {
-                SearchParameterMap params = new SearchParameterMap();
-                params.setLoadSynchronousUpTo(1);
-                if (localReference || myFhirContext.getVersion().getVersion().isEquivalentTo(FhirVersionEnum.DSTU2)) {
-                    params.add(IAnyResource.SP_RES_ID, new StringParam(id.getIdPart()));
-                } else {
-                    params.add(Questionnaire.SP_URL, new UriParam(id.getValue()));
-                }
-                search = myDaoRegistry.getResourceDao("Questionnaire").search(params);
-                break;
-            }
-            case "CodeSystem": {
-                int versionSeparator = theUri.lastIndexOf('|');
-                SearchParameterMap params = new SearchParameterMap();
-                params.setLoadSynchronousUpTo(1);
-                if (versionSeparator != -1) {
-                    params.add(CodeSystem.SP_VERSION, new TokenParam(theUri.substring(versionSeparator + 1)));
-                    params.add(CodeSystem.SP_URL, new UriParam(theUri.substring(0, versionSeparator)));
-                } else {
-                    params.add(CodeSystem.SP_URL, new UriParam(theUri));
-                }
-                params.setSort(new SortSpec("_lastUpdated").setOrder(SortOrderEnum.DESC));
-                search = myDaoRegistry.getResourceDao(resourceName).search(params);
-                break;
-            }
-            case "ImplementationGuide":
-            case "SearchParameter": {
-                SearchParameterMap params = new SearchParameterMap();
-                params.setLoadSynchronousUpTo(1);
-                params.add(ImplementationGuide.SP_URL, new UriParam(theUri));
-                search = myDaoRegistry.getResourceDao(resourceName).search(params);
-                break;
-            }
-            default:
-                // N.B.: this code assumes that we are searching by canonical URL and that the CanonicalType in question has a URL
-                SearchParameterMap params = new SearchParameterMap();
-                params.setLoadSynchronousUpTo(1);
-                params.add("url", new UriParam(theUri));
-                search = myDaoRegistry.getResourceDao(resourceName).search(params);
-        }
+	@Override
+	public FhirContext getFhirContext() {
+		return myFhirContext;
+	}
 
-        Integer size = search.size();
-        if (size == null || size == 0) {
-            return myNoMatch;
-        }
+	@PostConstruct
+	public void start() {
+		myStructureDefinitionType =
+				myFhirContext.getResourceDefinition("StructureDefinition").getImplementingClass();
+		myValueSetType = myFhirContext.getResourceDefinition("ValueSet").getImplementingClass();
 
-        if (size > 1) {
-            ourLog.warn("Found multiple {} instances with URL search value of: {}", resourceName, theUri);
-        }
+		if (myFhirContext.getVersion().getVersion().isNewerThan(FhirVersionEnum.DSTU2)) {
+			myCodeSystemType = myFhirContext.getResourceDefinition("CodeSystem").getImplementingClass();
+		} else {
+			myCodeSystemType = myFhirContext.getResourceDefinition("ValueSet").getImplementingClass();
+		}
+	}
 
-        return search.getResources(0, 1).get(0);
-    }
-
-    @Override
-    public FhirContext getFhirContext() {
-        return myFhirContext;
-    }
-
-    @PostConstruct
-    public void start() {
-        myStructureDefinitionType = myFhirContext.getResourceDefinition("StructureDefinition").getImplementingClass();
-        myValueSetType = myFhirContext.getResourceDefinition("ValueSet").getImplementingClass();
-
-        if (myFhirContext.getVersion().getVersion().isNewerThan(FhirVersionEnum.DSTU2)) {
-            myCodeSystemType = myFhirContext.getResourceDefinition("CodeSystem").getImplementingClass();
-        } else {
-            myCodeSystemType = myFhirContext.getResourceDefinition("ValueSet").getImplementingClass();
-        }
-    }
-
-
-    public void clearCaches() {
-        myLoadCache.invalidateAll();
-    }
+	public void clearCaches() {
+		myLoadCache.invalidateAll();
+	}
 }
