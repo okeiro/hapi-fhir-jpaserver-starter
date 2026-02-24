@@ -9,7 +9,6 @@ env:
   GCP_REGION: europe-west9
   ARTIFACT_REGISTRY: europe-west9-docker.pkg.dev
   REGISTRY_NAME: preproduction-okeiro
-  IMAGE_NAME: mapping-service
 
 permissions:
   id-token: write
@@ -61,17 +60,24 @@ jobs:
           target: default
           push: true
           tags: |
-            ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-            ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${{ needs.parse-version.outputs.version }}
-            ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/mapping-service:${{ github.sha }}
+            ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/mapping-service:${{ needs.parse-version.outputs.version }}
+            ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/mapping-service:latest
+            ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/fhir-simulator-r4:${{ github.sha }}
+            ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/fhir-simulator-r4:${{ needs.parse-version.outputs.version }}
+            ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/fhir-simulator-r4:latest
+            ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/fhir-simulator-r5:${{ github.sha }}
+            ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/fhir-simulator-r5:${{ needs.parse-version.outputs.version }}
+            ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/fhir-simulator-r5:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Summary
         run: |
-          echo "## Docker Image Built & Pushed to Staging" >> $GITHUB_STEP_SUMMARY
+          echo "## Docker Images Built & Pushed to Staging" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Image:** \`${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/${{ env.IMAGE_NAME }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Registry:** \`${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Images:** mapping-service, fhir-simulator-r4, fhir-simulator-r5" >> $GITHUB_STEP_SUMMARY
           echo "**Tags:** \`${{ needs.parse-version.outputs.version }}\`, \`${{ github.sha }}\`, \`latest\`" >> $GITHUB_STEP_SUMMARY
 
   cve-scan:
@@ -93,22 +99,29 @@ jobs:
 
       - name: Pull image from registry
         run: |
-          docker pull "${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${{ needs.parse-version.outputs.version }}"
+          docker pull "${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/mapping-service:${{ needs.parse-version.outputs.version }}"
 
       - name: Trivy CVE Scan
         uses: ./.github/actions/trivy-scan
         with:
-          image: "${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${{ needs.parse-version.outputs.version }}"
+          image: "${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/mapping-service:${{ needs.parse-version.outputs.version }}"
           fail-on-critical: 'true'
           max-high-cves: '5'
           block: 'true'
 
   create-gitops-pr:
-    name: Create Staging GitOps PR
+    name: Create Staging GitOps PR (${{ matrix.service }})
     needs: [parse-version, build-push, cve-scan]
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - mapping-service
+          - fhir-simulator-r4
+          - fhir-simulator-r5
     concurrency:
-      group: gitops-staging-mapping-service
+      group: gitops-staging-${{ matrix.service }}
       cancel-in-progress: false
     steps:
       - name: Checkout code
@@ -118,8 +131,8 @@ jobs:
         uses: ./.github/actions/argocd-pr
         with:
           env-name: preproduction
-          component-name: mapping-service
-          gitops-folder: preproduction/mapping-service
+          component-name: ${{ matrix.service }}
+          gitops-folder: preproduction/${{ matrix.service }}
           gitops-values-file: values.yaml
           image-tag-paths: '["deployment.imageRef.tag"]'
           image-tag: ${{ needs.parse-version.outputs.version }}
@@ -131,11 +144,6 @@ jobs:
         run: |
           echo "## Staging Deployment Initiated" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Component:** mapping-service" >> $GITHUB_STEP_SUMMARY
+          echo "**Component:** ${{ matrix.service }}" >> $GITHUB_STEP_SUMMARY
           echo "**Version:** ${{ needs.parse-version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "**Tag:** ${{ github.event.release.tag_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
-          echo "1. Review the GitOps PR in the helm-charts repository" >> $GITHUB_STEP_SUMMARY
-          echo "2. Merge the PR to deploy to staging" >> $GITHUB_STEP_SUMMARY
-          echo "3. Validate the deployment on staging environment" >> $GITHUB_STEP_SUMMARY
