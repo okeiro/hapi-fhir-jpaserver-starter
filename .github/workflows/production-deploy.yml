@@ -1,0 +1,160 @@
+name: Production Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to deploy (e.g., 2.3.0 — must exist in staging registry)'
+        required: true
+        type: string
+
+env:
+  IMAGE_NAME: mapping-service
+  STAGING_PROJECT_ID: s3ns-staging-okeiro
+  STAGING_REGISTRY: europe-west9-docker.pkg.dev
+  STAGING_REGISTRY_NAME: preproduction-okeiro
+  PROD_PROJECT_ID: s3ns-production-okeiro
+  PROD_REGISTRY: europe-west9-docker.pkg.dev
+  PROD_REGISTRY_NAME: production
+
+permissions:
+  id-token: write
+  contents: write
+  pull-requests: write
+
+jobs:
+  validate-staging-tag:
+    name: Validate Staging Tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate release tag exists
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          TAG="v${VERSION}"
+
+          echo "Version: $VERSION"
+          echo "Expected tag: $TAG"
+
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG exists"
+          else
+            echo "ERROR: Tag $TAG not found!"
+            echo "Production deployments must promote existing staging releases."
+            echo ""
+            echo "Available release tags:"
+            git tag -l "v*" | tail -10
+            exit 1
+          fi
+
+  retag-and-push:
+    name: Retag and Push to Production
+    needs: validate-staging-tag
+    runs-on: ubuntu-latest
+    environment:
+      name: "production"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup GCP (Production)
+        uses: ./.github/actions/gcp-setup
+        with:
+          service-account-email: ${{ vars.GCP_SA_EMAIL }}
+          workload-identity-provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          artifact-registry-endpoint: ${{ env.PROD_REGISTRY }}
+
+      - name: Authenticate to staging registry
+        run: |
+          gcloud auth configure-docker ${{ env.STAGING_REGISTRY }} --quiet
+
+      - name: Retag image from staging to production
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          STAGING_IMAGE="${{ env.STAGING_REGISTRY }}/${{ env.STAGING_PROJECT_ID }}/${{ env.STAGING_REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${VERSION}"
+          PROD_IMAGE_BASE="${{ env.PROD_REGISTRY }}/${{ env.PROD_PROJECT_ID }}/${{ env.PROD_REGISTRY_NAME }}/${{ env.IMAGE_NAME }}"
+
+          echo "Pulling staging image: $STAGING_IMAGE"
+          docker pull "$STAGING_IMAGE"
+
+          echo "Tagging for production:"
+          docker tag "$STAGING_IMAGE" "${PROD_IMAGE_BASE}:${VERSION}"
+          docker tag "$STAGING_IMAGE" "${PROD_IMAGE_BASE}:latest"
+
+          echo "Pushing to production registry:"
+          docker push "${PROD_IMAGE_BASE}:${VERSION}"
+          docker push "${PROD_IMAGE_BASE}:latest"
+
+          echo "Successfully retagged ${IMAGE_NAME}:${VERSION} to production"
+
+  cve-scan:
+    name: CVE Scan Before Production Deploy
+    needs: retag-and-push
+    runs-on: ubuntu-latest
+    environment:
+      name: "production"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup GCP
+        uses: ./.github/actions/gcp-setup
+        with:
+          service-account-email: ${{ vars.GCP_SA_EMAIL }}
+          workload-identity-provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          artifact-registry-endpoint: ${{ env.PROD_REGISTRY }}
+
+      - name: Pull image from registry
+        run: |
+          docker pull "${{ env.PROD_REGISTRY }}/${{ env.PROD_PROJECT_ID }}/${{ env.PROD_REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.version }}"
+
+      - name: Trivy CVE Scan
+        uses: ./.github/actions/trivy-scan
+        with:
+          image: "${{ env.PROD_REGISTRY }}/${{ env.PROD_PROJECT_ID }}/${{ env.PROD_REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.version }}"
+          fail-on-critical: 'true'
+          max-high-cves: '5'
+          block: 'true'
+
+  create-gitops-pr:
+    name: Create Production GitOps PR
+    needs: retag-and-push
+    runs-on: ubuntu-latest
+    concurrency:
+      group: gitops-production-mapping-service
+      cancel-in-progress: false
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create GitOps PR
+        uses: ./.github/actions/argocd-pr
+        with:
+          env-name: production
+          component-name: mapping-service
+          gitops-folder: production/mapping-service
+          gitops-values-file: values.yaml
+          image-tag-paths: '["deployment.imageRef.tag"]'
+          image-tag: ${{ github.event.inputs.version }}
+          github-app-id: ${{ vars.GITOPS_APP_ID }}
+          github-app-private-key: ${{ secrets.GITOPS_APP_PRIVATE_KEY }}
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "## Production Deployment Initiated" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Component:** mapping-service" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ github.event.inputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Triggered by:** @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "1. Review the GitOps PR in the helm-charts repository" >> $GITHUB_STEP_SUMMARY
+          echo "2. **IMPORTANT:** Manually approve and merge the PR to deploy to production" >> $GITHUB_STEP_SUMMARY
+          echo "3. Monitor the deployment in the production cluster" >> $GITHUB_STEP_SUMMARY
+          echo "4. Validate production functionality after deployment" >> $GITHUB_STEP_SUMMARY

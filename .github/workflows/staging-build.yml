@@ -1,0 +1,141 @@
+name: Staging Build & Deploy
+
+on:
+  release:
+    types: [published]
+
+env:
+  GCP_PROJECT_ID: s3ns-staging-okeiro
+  GCP_REGION: europe-west9
+  ARTIFACT_REGISTRY: europe-west9-docker.pkg.dev
+  REGISTRY_NAME: preproduction-okeiro
+  IMAGE_NAME: mapping-service
+
+permissions:
+  id-token: write
+  contents: write
+  pull-requests: write
+
+jobs:
+  parse-version:
+    name: Parse Release Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.parse.outputs.version }}
+    steps:
+      - name: Extract version from tag
+        id: parse
+        run: |
+          TAG_NAME="${{ github.event.release.tag_name }}"
+          # Strip leading 'v' if present (e.g., v2.3.0 -> 2.3.0)
+          VERSION="${TAG_NAME#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Tag: $TAG_NAME -> Version: $VERSION"
+
+  build-push:
+    name: Build and Push to Staging
+    needs: parse-version
+    runs-on: ubuntu-latest
+    environment:
+      name: "staging"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Setup GCP
+        uses: ./.github/actions/gcp-setup
+        with:
+          service-account-email: ${{ vars.GCP_SA_EMAIL }}
+          workload-identity-provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          artifact-registry-endpoint: ${{ env.ARTIFACT_REGISTRY }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: default
+          push: true
+          tags: |
+            ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${{ needs.parse-version.outputs.version }}
+            ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Summary
+        run: |
+          echo "## Docker Image Built & Pushed to Staging" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/${{ env.IMAGE_NAME }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Tags:** \`${{ needs.parse-version.outputs.version }}\`, \`${{ github.sha }}\`, \`latest\`" >> $GITHUB_STEP_SUMMARY
+
+  cve-scan:
+    name: CVE Scan
+    needs: [parse-version, build-push]
+    runs-on: ubuntu-latest
+    environment:
+      name: "staging"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup GCP
+        uses: ./.github/actions/gcp-setup
+        with:
+          service-account-email: ${{ vars.GCP_SA_EMAIL }}
+          workload-identity-provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          artifact-registry-endpoint: ${{ env.ARTIFACT_REGISTRY }}
+
+      - name: Pull image from registry
+        run: |
+          docker pull "${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${{ needs.parse-version.outputs.version }}"
+
+      - name: Trivy CVE Scan
+        uses: ./.github/actions/trivy-scan
+        with:
+          image: "${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${{ needs.parse-version.outputs.version }}"
+          fail-on-critical: 'true'
+          max-high-cves: '5'
+          block: 'true'
+
+  create-gitops-pr:
+    name: Create Staging GitOps PR
+    needs: [parse-version, build-push, cve-scan]
+    runs-on: ubuntu-latest
+    concurrency:
+      group: gitops-staging-mapping-service
+      cancel-in-progress: false
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create GitOps PR
+        uses: ./.github/actions/argocd-pr
+        with:
+          env-name: preproduction
+          component-name: mapping-service
+          gitops-folder: preproduction/mapping-service
+          gitops-values-file: values.yaml
+          image-tag-paths: '["deployment.imageRef.tag"]'
+          image-tag: ${{ needs.parse-version.outputs.version }}
+          github-app-id: ${{ vars.GITOPS_APP_ID }}
+          github-app-private-key: ${{ secrets.GITOPS_APP_PRIVATE_KEY }}
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "## Staging Deployment Initiated" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Component:** mapping-service" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ needs.parse-version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Tag:** ${{ github.event.release.tag_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "1. Review the GitOps PR in the helm-charts repository" >> $GITHUB_STEP_SUMMARY
+          echo "2. Merge the PR to deploy to staging" >> $GITHUB_STEP_SUMMARY
+          echo "3. Validate the deployment on staging environment" >> $GITHUB_STEP_SUMMARY
