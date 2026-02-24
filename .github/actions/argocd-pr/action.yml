@@ -1,0 +1,254 @@
+name: Deploy via Gitops
+description: Update Argo CD GitOps repo with freshly built image
+
+inputs:
+  gitops-pat:
+    description: PAT for access to the Gitops repository
+    required: false
+  github-app-id:
+    description: GitHub App ID for authentication
+    required: false
+  github-app-private-key:
+    description: GitHub App private key for authentication
+    required: false
+  component-name:
+    description: Component name
+    required: false
+    default: mapping-service
+  env-name:
+    description: Environment name
+    required: true
+  gitops-repo:
+    description: Git URL of GitOps repo
+    required: false
+    default: okeiro/helm-charts
+  gitops-repo-branch:
+    description: GitOps repo branch to update
+    required: false
+    default: main
+  gitops-folder:
+    description: Folder name in GitOps repo for this component
+    required: true
+  gitops-values-file:
+    description: Values file name
+    required: false
+    default: values.yaml
+  image-tag-paths:
+    description: JSON array of YAML paths to update with new tag
+    required: false
+    default: '["deployment.imageRef.tag"]'
+  image-tag:
+    description: Image tag to use (defaults to github.sha if not provided)
+    required: false
+    default: ""
+
+outputs:
+  pull-request-number:
+    description: Pull request number
+    value: ${{ steps.cpr.outputs.pull-request-number }}
+  pull-request-url:
+    description: Pull request URL
+    value: ${{ steps.cpr.outputs.pull-request-url }}
+  pull-request-operation:
+    description: Pull request operation
+    value: ${{ steps.cpr.outputs.pull-request-operation }}
+
+runs:
+  using: composite
+  steps:
+    - name: Validate inputs
+      shell: bash
+      run: |
+        if [[ -z "${{ inputs.gitops-pat }}" && ( -z "${{ inputs.github-app-id }}" || -z "${{ inputs.github-app-private-key }}" ) ]]; then
+          echo "Error: Authentication required"
+          exit 1
+        fi
+
+    - name: Generate GitHub App token
+      if: inputs.github-app-id != '' && inputs.github-app-private-key != ''
+      id: app-token
+      uses: actions/create-github-app-token@v2
+      with:
+        app-id: ${{ inputs.github-app-id }}
+        private-key: ${{ inputs.github-app-private-key }}
+        owner: okeiro
+        repositories: helm-charts
+
+    - name: Set token
+      id: token
+      shell: bash
+      run: |
+        if [[ -n "${{ steps.app-token.outputs.token }}" ]]; then
+          echo "token=${{ steps.app-token.outputs.token }}" >> $GITHUB_OUTPUT
+        else
+          echo "token=${{ inputs.gitops-pat }}" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Checkout GitOps repo
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ inputs.gitops-repo }}
+        ref: ${{ inputs.gitops-repo-branch }}
+        path: gitops-repo
+        token: ${{ steps.token.outputs.token }}
+
+    - name: Set Git identity
+      shell: bash
+      run: |
+        git config --global user.name "GitHub Actions"
+        git config --global user.email "actions@github.com"
+
+    - name: Install yq
+      shell: bash
+      run: |
+        if ! command -v yq &> /dev/null; then
+          echo "Installing yq..."
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+        fi
+        yq --version
+
+    - name: Update tags
+      shell: bash
+      working-directory: gitops-repo
+      env:
+        TAG_PATHS_JSON: ${{ inputs.image-tag-paths }}
+        IMAGE_TAG: ${{ inputs.image-tag }}
+      run: |
+        # Determine tag to use
+        if [[ -n "$IMAGE_TAG" ]]; then
+          NEW_TAG="$IMAGE_TAG"
+        else
+          NEW_TAG="${{ github.sha }}"
+        fi
+        echo "NEW_TAG=${NEW_TAG}" >> $GITHUB_ENV
+
+        FOLDER="${{ inputs.gitops-folder }}"
+        VALUES_FILE="${{ inputs.gitops-values-file }}"
+        TARGET_FILE="./$FOLDER/$VALUES_FILE"
+
+        echo "Updating $TARGET_FILE with tag $NEW_TAG"
+        echo "Tag paths: $TAG_PATHS_JSON"
+
+        if [[ ! -f "$TARGET_FILE" ]]; then
+          echo "File $TARGET_FILE does not exist"
+          exit 1
+        fi
+
+        TAG_PATHS=$(echo "$TAG_PATHS_JSON" | jq -r '.[]')
+        NEEDS_UPDATE=false
+        CHANGES_SUMMARY=""
+
+        for TAG_PATH in $TAG_PATHS; do
+          OLD_TAG=$(yq eval ".${TAG_PATH}" "$TARGET_FILE")
+
+          if [[ "$OLD_TAG" != "$NEW_TAG" ]]; then
+            echo "Updating ${TAG_PATH}: ${OLD_TAG} -> ${NEW_TAG}"
+            yq eval -i ".${TAG_PATH} = \"${NEW_TAG}\"" "$TARGET_FILE"
+            NEEDS_UPDATE=true
+            if [[ -z "$CHANGES_SUMMARY" ]]; then
+              CHANGES_SUMMARY="${TAG_PATH}: ${OLD_TAG} -> ${NEW_TAG}"
+            else
+              CHANGES_SUMMARY="${CHANGES_SUMMARY} | ${TAG_PATH}: ${OLD_TAG} -> ${NEW_TAG}"
+            fi
+          else
+            echo "${TAG_PATH} already set to ${NEW_TAG}"
+          fi
+        done
+
+        if [[ "$NEEDS_UPDATE" == "true" ]]; then
+          echo "OLD_TAG=${OLD_TAG}" >> $GITHUB_ENV
+          echo "VALUES_FILE=$(basename $TARGET_FILE)" >> $GITHUB_ENV
+          echo "CHANGES_SUMMARY=${CHANGES_SUMMARY}" >> $GITHUB_ENV
+          echo "Tags updated successfully"
+        else
+          echo "SKIP_PR=true" >> $GITHUB_ENV
+          echo "No updates needed"
+        fi
+
+    - name: Format PR body
+      if: env.SKIP_PR != 'true'
+      id: pr-body
+      shell: bash
+      env:
+        COMPONENT: ${{ inputs.component-name }}
+        ENV_NAME: ${{ inputs.env-name }}
+        NEW_TAG: ${{ env.NEW_TAG }}
+        OLD_TAG: ${{ env.OLD_TAG }}
+        VALUES_FILE: ${{ env.VALUES_FILE }}
+        CHANGES_SUMMARY: ${{ env.CHANGES_SUMMARY }}
+        REPO: ${{ github.repository }}
+        SHA: ${{ github.sha }}
+        ACTOR: ${{ github.actor }}
+        RUN_ID: ${{ github.run_id }}
+      run: |
+        PR_BODY=$(cat <<EOFBODY
+        ## Deployment Update
+
+        **Component**: ${COMPONENT}
+        **Environment**: ${ENV_NAME}
+        **New Tag**: \`${NEW_TAG}\`
+        **Previous Tag**: \`${OLD_TAG}\`
+        **Values File**: \`${VALUES_FILE}\`
+
+        ### Changes
+        ${CHANGES_SUMMARY}
+        EOFBODY
+        )
+
+        # Add metadata footer
+        PR_BODY+=$'\n\n'
+        PR_BODY+="---"$'\n'
+        PR_BODY+="**Source**: $REPO@$SHA"$'\n'
+        PR_BODY+="**Triggered by**: @$ACTOR"$'\n'
+        PR_BODY+="**Workflow**: $RUN_ID"
+
+        {
+          echo 'body<<EOFOUT'
+          echo "$PR_BODY"
+          echo 'EOFOUT'
+        } >> $GITHUB_OUTPUT
+
+    - name: Determine branch name
+      if: env.SKIP_PR != 'true'
+      id: branch
+      shell: bash
+      env:
+        ENV_NAME: ${{ inputs.env-name }}
+        GITOPS_FOLDER: ${{ inputs.gitops-folder }}
+      run: |
+        echo "name=ci/${ENV_NAME}/${GITOPS_FOLDER}/${{ github.sha }}" >> $GITHUB_OUTPUT
+
+    - name: Determine PR title
+      if: env.SKIP_PR != 'true'
+      id: title
+      shell: bash
+      env:
+        COMPONENT: ${{ inputs.component-name }}
+        ENV_NAME: ${{ inputs.env-name }}
+      run: |
+        echo "value=Deploy [${ENV_NAME}] ${COMPONENT}" >> $GITHUB_OUTPUT
+
+    - name: Create Pull Request
+      if: env.SKIP_PR != 'true'
+      uses: peter-evans/create-pull-request@v5
+      id: cpr
+      with:
+        path: gitops-repo
+        token: ${{ steps.token.outputs.token }}
+        commit-message: 'ci: update ${{ inputs.component-name }} to ${{ env.NEW_TAG }}'
+        title: ${{ steps.title.outputs.value }}
+        body: ${{ steps.pr-body.outputs.body }}
+        branch: ${{ steps.branch.outputs.name }}
+        base: ${{ inputs.gitops-repo-branch }}
+        delete-branch: true
+
+    - name: Enable automerge
+      if: env.SKIP_PR != 'true'
+      continue-on-error: true
+      uses: peter-evans/enable-pull-request-automerge@v3
+      with:
+        repository: ${{ inputs.gitops-repo }}
+        token: ${{ steps.token.outputs.token }}
+        pull-request-number: ${{ steps.cpr.outputs.pull-request-number }}
+        merge-method: squash
