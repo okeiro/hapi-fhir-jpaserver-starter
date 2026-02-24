@@ -9,7 +9,6 @@ on:
         type: string
 
 env:
-  IMAGE_NAME: mapping-service
   STAGING_PROJECT_ID: s3ns-staging-okeiro
   STAGING_REGISTRY: europe-west9-docker.pkg.dev
   STAGING_REGISTRY_NAME: preproduction-okeiro
@@ -72,25 +71,28 @@ jobs:
         run: |
           gcloud auth configure-docker ${{ env.STAGING_REGISTRY }} --quiet
 
-      - name: Retag image from staging to production
+      - name: Retag all images from staging to production
         env:
           VERSION: ${{ github.event.inputs.version }}
         run: |
-          STAGING_IMAGE="${{ env.STAGING_REGISTRY }}/${{ env.STAGING_PROJECT_ID }}/${{ env.STAGING_REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${VERSION}"
-          PROD_IMAGE_BASE="${{ env.PROD_REGISTRY }}/${{ env.PROD_PROJECT_ID }}/${{ env.PROD_REGISTRY_NAME }}/${{ env.IMAGE_NAME }}"
+          SERVICES="mapping-service fhir-simulator-r4 fhir-simulator-r5"
 
-          echo "Pulling staging image: $STAGING_IMAGE"
-          docker pull "$STAGING_IMAGE"
+          for SERVICE in $SERVICES; do
+            STAGING_IMAGE="${{ env.STAGING_REGISTRY }}/${{ env.STAGING_PROJECT_ID }}/${{ env.STAGING_REGISTRY_NAME }}/${SERVICE}:${VERSION}"
+            PROD_IMAGE_BASE="${{ env.PROD_REGISTRY }}/${{ env.PROD_PROJECT_ID }}/${{ env.PROD_REGISTRY_NAME }}/${SERVICE}"
 
-          echo "Tagging for production:"
-          docker tag "$STAGING_IMAGE" "${PROD_IMAGE_BASE}:${VERSION}"
-          docker tag "$STAGING_IMAGE" "${PROD_IMAGE_BASE}:latest"
+            echo "--- Retagging ${SERVICE} ---"
+            echo "Pulling: $STAGING_IMAGE"
+            docker pull "$STAGING_IMAGE"
 
-          echo "Pushing to production registry:"
-          docker push "${PROD_IMAGE_BASE}:${VERSION}"
-          docker push "${PROD_IMAGE_BASE}:latest"
+            docker tag "$STAGING_IMAGE" "${PROD_IMAGE_BASE}:${VERSION}"
+            docker tag "$STAGING_IMAGE" "${PROD_IMAGE_BASE}:latest"
 
-          echo "Successfully retagged ${IMAGE_NAME}:${VERSION} to production"
+            docker push "${PROD_IMAGE_BASE}:${VERSION}"
+            docker push "${PROD_IMAGE_BASE}:latest"
+
+            echo "Done: ${SERVICE}:${VERSION}"
+          done
 
   cve-scan:
     name: CVE Scan Before Production Deploy
@@ -111,22 +113,29 @@ jobs:
 
       - name: Pull image from registry
         run: |
-          docker pull "${{ env.PROD_REGISTRY }}/${{ env.PROD_PROJECT_ID }}/${{ env.PROD_REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.version }}"
+          docker pull "${{ env.PROD_REGISTRY }}/${{ env.PROD_PROJECT_ID }}/${{ env.PROD_REGISTRY_NAME }}/mapping-service:${{ github.event.inputs.version }}"
 
       - name: Trivy CVE Scan
         uses: ./.github/actions/trivy-scan
         with:
-          image: "${{ env.PROD_REGISTRY }}/${{ env.PROD_PROJECT_ID }}/${{ env.PROD_REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.version }}"
+          image: "${{ env.PROD_REGISTRY }}/${{ env.PROD_PROJECT_ID }}/${{ env.PROD_REGISTRY_NAME }}/mapping-service:${{ github.event.inputs.version }}"
           fail-on-critical: 'true'
           max-high-cves: '5'
           block: 'true'
 
   create-gitops-pr:
-    name: Create Production GitOps PR
+    name: Create Production GitOps PR (${{ matrix.service }})
     needs: retag-and-push
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - mapping-service
+          - fhir-simulator-r4
+          - fhir-simulator-r5
     concurrency:
-      group: gitops-production-mapping-service
+      group: gitops-production-${{ matrix.service }}
       cancel-in-progress: false
     steps:
       - name: Checkout code
@@ -136,8 +145,8 @@ jobs:
         uses: ./.github/actions/argocd-pr
         with:
           env-name: production
-          component-name: mapping-service
-          gitops-folder: production/mapping-service
+          component-name: ${{ matrix.service }}
+          gitops-folder: production/${{ matrix.service }}
           gitops-values-file: values.yaml
           image-tag-paths: '["deployment.imageRef.tag"]'
           image-tag: ${{ github.event.inputs.version }}
@@ -149,12 +158,6 @@ jobs:
         run: |
           echo "## Production Deployment Initiated" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Component:** mapping-service" >> $GITHUB_STEP_SUMMARY
+          echo "**Component:** ${{ matrix.service }}" >> $GITHUB_STEP_SUMMARY
           echo "**Version:** ${{ github.event.inputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "**Triggered by:** @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
-          echo "1. Review the GitOps PR in the helm-charts repository" >> $GITHUB_STEP_SUMMARY
-          echo "2. **IMPORTANT:** Manually approve and merge the PR to deploy to production" >> $GITHUB_STEP_SUMMARY
-          echo "3. Monitor the deployment in the production cluster" >> $GITHUB_STEP_SUMMARY
-          echo "4. Validate production functionality after deployment" >> $GITHUB_STEP_SUMMARY

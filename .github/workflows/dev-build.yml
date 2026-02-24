@@ -11,7 +11,6 @@ env:
   GCP_REGION: europe-west8
   ARTIFACT_REGISTRY: europe-west8-docker.pkg.dev
   REGISTRY_NAME: hapi-fhir
-  IMAGE_NAME: mapping-service
 
 permissions:
   id-token: write
@@ -45,16 +44,21 @@ jobs:
           target: default
           push: true
           tags: |
-            ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-            ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/mapping-service:${{ github.sha }}
+            ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/mapping-service:latest
+            ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/fhir-simulator-r4:${{ github.sha }}
+            ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/fhir-simulator-r4:latest
+            ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/fhir-simulator-r5:${{ github.sha }}
+            ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/fhir-simulator-r5:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Summary
         run: |
-          echo "## Docker Image Built & Pushed" >> $GITHUB_STEP_SUMMARY
+          echo "## Docker Images Built & Pushed" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Image:** \`${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/${{ env.IMAGE_NAME }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Registry:** \`${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Images:** mapping-service, fhir-simulator-r4, fhir-simulator-r5" >> $GITHUB_STEP_SUMMARY
           echo "**Tags:** \`${{ github.sha }}\`, \`latest\`" >> $GITHUB_STEP_SUMMARY
 
   cve-scan:
@@ -77,22 +81,29 @@ jobs:
         run: gcloud auth configure-docker ${{ env.ARTIFACT_REGISTRY }} --quiet
 
       - name: Pull image
-        run: docker pull ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+        run: docker pull ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/mapping-service:${{ github.sha }}
 
       - name: Trivy CVE Scan
         uses: ./.github/actions/trivy-scan
         with:
-          image: ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          image: ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/mapping-service:${{ github.sha }}
           fail-on-critical: 'true'
           max-high-cves: '5'
           block: 'false'
 
   create-sandbox-pr:
-    name: Create Sandbox GitOps PR
+    name: Create Sandbox GitOps PR (${{ matrix.service }})
     needs: build-push
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - mapping-service
+          - fhir-simulator-r4
+          - fhir-simulator-r5
     concurrency:
-      group: gitops-sandbox-mapping-service
+      group: gitops-sandbox-${{ matrix.service }}
       cancel-in-progress: false
     steps:
       - name: Checkout code
@@ -102,8 +113,8 @@ jobs:
         uses: ./.github/actions/argocd-pr
         with:
           env-name: sandbox
-          component-name: mapping-service
-          gitops-folder: sandbox/mapping-service
+          component-name: ${{ matrix.service }}
+          gitops-folder: sandbox/${{ matrix.service }}
           gitops-values-file: values.yaml
           image-tag-paths: '["deployment.imageRef.tag"]'
           github-app-id: ${{ vars.GITOPS_APP_ID }}
