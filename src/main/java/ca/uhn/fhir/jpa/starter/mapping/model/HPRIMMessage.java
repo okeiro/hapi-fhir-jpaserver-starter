@@ -10,9 +10,7 @@ public class HPRIMMessage {
 	private final Map<String, List<HPRIMSegment>> segments = new LinkedHashMap<>();
 
 	public void addSegment(HPRIMSegment segment) {
-		segments
-			.computeIfAbsent(segment.getName(), k -> new ArrayList<>())
-			.add(segment);
+		segments.computeIfAbsent(segment.getName(), k -> new ArrayList<>()).add(segment);
 	}
 
 	public List<HPRIMSegment> getSegments(String name) {

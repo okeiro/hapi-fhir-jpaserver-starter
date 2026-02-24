@@ -1,9 +1,9 @@
 package ca.uhn.fhir.jpa.starter.mapping.model;
 
-import java.util.*;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.*;
 
 public class HL7v2Builder {
 
@@ -13,16 +13,20 @@ public class HL7v2Builder {
 	private static final String COMP_SEP = "^";
 	private static final String SUBCOMP_SEP = "&";
 
-	private static final Pattern PATH_PATTERN =
-		Pattern.compile(
-			"([A-Z0-9]{2,3})" +                    // SEG
-				"(?:\\[(\\d+|\\+)])?" +             // SEG[index|+]
-				"-(\\d+)" +                         // FIELD
-				"(?:\\[(\\d+|\\+)])?" +             // REP[index|+]
-				"(?:-(\\d+|\\+))?" +                // COMP[index|+]
-				"(?:-(\\d+|\\+))?" +                // SUB
-				"(?:\\.value)?"                     // optional .value
-		);
+	private static final Pattern PATH_PATTERN = Pattern.compile(
+			"([A-Z0-9]{2,3})" + // SEG
+					"(?:\\[(\\d+|\\+)])?"
+					+ // SEG[index|+]
+					"-(\\d+)"
+					+ // FIELD
+					"(?:\\[(\\d+|\\+)])?"
+					+ // REP[index|+]
+					"(?:-(\\d+|\\+))?"
+					+ // COMP[index|+]
+					"(?:-(\\d+|\\+))?"
+					+ // SUB
+					"(?:\\.value)?" // optional .value
+			);
 	private final Map<String, List<List<List<List<String>>>>> message = new LinkedHashMap<>();
 
 	public void putByPath(String path, String value) {
@@ -65,8 +69,8 @@ public class HL7v2Builder {
 		if (subToken != null) {
 			String existing = comps.get(compIndex);
 			List<String> subs = existing != null && !existing.isEmpty()
-				? new ArrayList<>(Arrays.asList(existing.split(SUBCOMP_SEP, -1)))
-				: new ArrayList<>();
+					? new ArrayList<>(Arrays.asList(existing.split(SUBCOMP_SEP, -1)))
+					: new ArrayList<>();
 
 			int subIndex = subToken == -1 ? subs.size() : subToken - 1; // HL7 1-based
 			if (subIndex == subs.size()) {

@@ -7,17 +7,17 @@ import java.util.List;
 
 public class CSVRecords {
 
-    private List<CSVRecord> records;
+	private List<CSVRecord> records;
 
-    public CSVRecords(CSVParser parser) {
-        this.records = parser.getRecords();
-    }
+	public CSVRecords(CSVParser parser) {
+		this.records = parser.getRecords();
+	}
 
-    public CSVRecords(List<CSVRecord> records) {
-        this.records = records;
-    }
+	public CSVRecords(List<CSVRecord> records) {
+		this.records = records;
+	}
 
-    public List<CSVRecord> getRecords() {
-        return records;
-    }
+	public List<CSVRecord> getRecords() {
+		return records;
+	}
 }

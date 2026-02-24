@@ -3,8 +3,8 @@ package ca.uhn.fhir.jpa.starter.mapping.service;
 import ca.uhn.fhir.context.FhirContext;
 import ca.uhn.fhir.jpa.api.dao.IFhirResourceDao;
 import ca.uhn.fhir.jpa.searchparam.SearchParameterMap;
-import ca.uhn.fhir.jpa.starter.mapping.model.*;
 import ca.uhn.fhir.jpa.starter.mapping.model.Variable;
+import ca.uhn.fhir.jpa.starter.mapping.model.*;
 import ca.uhn.fhir.parser.IParser;
 import ca.uhn.fhir.rest.api.server.IBundleProvider;
 import ca.uhn.fhir.rest.client.api.IGenericClient;
@@ -12,8 +12,8 @@ import ca.uhn.fhir.rest.param.UriParam;
 import ca.uhn.fhir.rest.server.exceptions.InvalidRequestException;
 import ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException;
 import ca.uhn.hl7v2.HL7Exception;
-import ca.uhn.hl7v2.model.*;
 import ca.uhn.hl7v2.model.Group;
+import ca.uhn.hl7v2.model.*;
 import org.apache.commons.csv.CSVRecord;
 import org.hl7.fhir.exceptions.DefinitionException;
 import org.hl7.fhir.exceptions.FHIRException;
@@ -21,8 +21,8 @@ import org.hl7.fhir.instance.model.api.IBaseResource;
 import org.hl7.fhir.r4.context.IWorkerContext;
 import org.hl7.fhir.r4.fhirpath.ExpressionNode;
 import org.hl7.fhir.r4.fhirpath.FHIRPathEngine;
-import org.hl7.fhir.r4.model.*;
 import org.hl7.fhir.r4.model.Type;
+import org.hl7.fhir.r4.model.*;
 import org.hl7.fhir.r4.utils.StructureMapUtilities;
 import org.hl7.fhir.utilities.Utilities;
 import org.json.JSONArray;
@@ -37,8 +37,8 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
-import java.util.*;
 import java.util.stream.Collectors;
+import java.util.*;
 
 import static ca.uhn.fhir.context.FhirVersionEnum.R4;
 import static ca.uhn.fhir.jpa.starter.mapping.model.Variable.VariableMode.*;
@@ -47,38 +47,38 @@ import static ca.uhn.fhir.jpa.starter.mapping.service.JSONDataReader.parseJsonDa
 import static ca.uhn.fhir.jpa.starter.mapping.service.XMLDataReader.parseXMLData;
 
 /*
-  Copyright (c) 2011+, HL7, Inc.
-  All rights reserved.
+Copyright (c) 2011+, HL7, Inc.
+All rights reserved.
 
-  Redistribution and use in source and binary forms, with or without modification,
-  are permitted provided that the following conditions are met:
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
 
-   * Redistributions of source code must retain the above copyright notice, this
-     list of conditions and the following disclaimer.
-   * Redistributions in binary form must reproduce the above copyright notice,
-     this list of conditions and the following disclaimer in the documentation
-     and/or other materials provided with the distribution.
-   * Neither the name of HL7 nor the names of its contributors may be used to
-     endorse or promote products derived from this software without specific
-     prior written permission.
+* Redistributions of source code must retain the above copyright notice, this
+	list of conditions and the following disclaimer.
+* Redistributions in binary form must reproduce the above copyright notice,
+	this list of conditions and the following disclaimer in the documentation
+	and/or other materials provided with the distribution.
+* Neither the name of HL7 nor the names of its contributors may be used to
+	endorse or promote products derived from this software without specific
+	prior written permission.
 
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
-  ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-  WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
-  IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
-  INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
-  NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-  PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-  POSSIBILITY OF SUCH DAMAGE.
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
 
- */
+*/
 
 /**
  * Based on {@see StructureMapUtilities}
  */
-//This is supporting only FHIR R4
+// This is supporting only FHIR R4
 public class Mapper {
 
 	public static final String MAP_EXPRESSION = "map.transform.expression";
@@ -95,8 +95,12 @@ public class Mapper {
 	private final IFhirResourceDao<StructureMap> structureMapDao;
 	private final IGenericClient clientStructureMap;
 
-	public Mapper(IWorkerContext worker, FHIRPathEngine fhirPathEngine,
-					  StructureMapUtilities.ITransformerServices services, IFhirResourceDao<StructureMap> structureMapDao, IGenericClient clientStructureMap) {
+	public Mapper(
+			IWorkerContext worker,
+			FHIRPathEngine fhirPathEngine,
+			StructureMapUtilities.ITransformerServices services,
+			IFhirResourceDao<StructureMap> structureMapDao,
+			IGenericClient clientStructureMap) {
 		this.worker = worker;
 		this.fhirPathEngine = fhirPathEngine;
 		this.services = services;
@@ -122,18 +126,22 @@ public class Mapper {
 				String inputName = input.getName();
 
 				Binary parameter = (Binary) parameters.getParameter("input").getPart().stream()
-					.filter(p -> inputName.equals(p.getName()))
-					.findFirst()
-					.map(p -> p.getResource())
-					.orElse(null);
+						.filter(p -> inputName.equals(p.getName()))
+						.findFirst()
+						.map(p -> p.getResource())
+						.orElse(null);
 
 				if (parameter == null && StructureMap.StructureMapInputMode.SOURCE.equals(input.getMode())) {
-					throw new InvalidRequestException(String.format("Missing input named '%s' in parameters !", inputName));
+					throw new InvalidRequestException(
+							String.format("Missing input named '%s' in parameters !", inputName));
 				}
 
 				if (parameter != null) {
 					Object parsedObject = parseInput(parameter, input.getType());
-					variables.add(input.getMode().equals(StructureMap.StructureMapInputMode.SOURCE) ? INPUT : OUTPUT, inputName, parsedObject);
+					variables.add(
+							input.getMode().equals(StructureMap.StructureMapInputMode.SOURCE) ? INPUT : OUTPUT,
+							inputName,
+							parsedObject);
 				} else if (StructureMap.StructureMapInputMode.TARGET.equals(input.getMode())) {
 					variables.add(OUTPUT, inputName, createEmptyOutput(input.getType()));
 				}
@@ -142,15 +150,18 @@ public class Mapper {
 			executeGroup(new MappingContext(resolved, group, variables), true);
 
 			variables.getOutputs().stream().forEach(v -> {
-				String type = group.getInput().stream().filter(i -> i.getName().equals(v.getName()))
-					.map(StructureMap.StructureMapGroupInputComponent::getType)
-					.findFirst().orElse("Resource");
+				String type = group.getInput().stream()
+						.filter(i -> i.getName().equals(v.getName()))
+						.map(StructureMap.StructureMapGroupInputComponent::getType)
+						.findFirst()
+						.orElse("Resource");
 
 				result.addParameter(new Parameters.ParametersParameterComponent()
-					.setName(v.getName())
-					.setResource(new Binary()
-						.setContentType(getContentType(type))
-						.setContentAsBase64(Base64.getEncoder().encodeToString(serializeObject(v.getObject(), type)))));
+						.setName(v.getName())
+						.setResource(new Binary()
+								.setContentType(getContentType(type))
+								.setContentAsBase64(
+										Base64.getEncoder().encodeToString(serializeObject(v.getObject(), type)))));
 			});
 		}
 		return result;
@@ -158,13 +169,19 @@ public class Mapper {
 
 	private Object parseInput(Binary parameter, String type) {
 		switch (type) {
-			case "CSV": return new CSVRecords(parseCSVData(parameter.getContentAsBase64()));
-			case "JSON": return parseJsonData(parameter.getContentAsBase64());
-			case "HL7v2": return HL7v2DataReader.parseData(parameter.getContentAsBase64());
-			case "HPRIM": return HPRIMDataReader.parseData(parameter.getContentAsBase64());
-			case "XML": return parseXMLData(parameter.getContentAsBase64());
+			case "CSV":
+				return new CSVRecords(parseCSVData(parameter.getContentAsBase64()));
+			case "JSON":
+				return parseJsonData(parameter.getContentAsBase64());
+			case "HL7v2":
+				return HL7v2DataReader.parseData(parameter.getContentAsBase64());
+			case "HPRIM":
+				return HPRIMDataReader.parseData(parameter.getContentAsBase64());
+			case "XML":
+				return parseXMLData(parameter.getContentAsBase64());
 			default:
-				String stringContent = new String(Base64.getDecoder().decode(parameter.getContentAsBase64()), StandardCharsets.UTF_8);
+				String stringContent =
+						new String(Base64.getDecoder().decode(parameter.getContentAsBase64()), StandardCharsets.UTF_8);
 				IParser parser = FhirContext.forCached(R4).newJsonParser();
 				return parser.parseResource(stringContent);
 		}
@@ -172,16 +189,23 @@ public class Mapper {
 
 	private Object createEmptyOutput(String type) {
 		switch (type) {
-			case "CSV": return new CSVBuilder();
-			case "JSON": return new JSONBuilder();
-			case "HL7v2": return new HL7v2Builder();
-			default: return ResourceFactory.createResourceOrType(type);
+			case "CSV":
+				return new CSVBuilder();
+			case "JSON":
+				return new JSONBuilder();
+			case "HL7v2":
+				return new HL7v2Builder();
+			default:
+				return ResourceFactory.createResourceOrType(type);
 		}
 	}
 
 	private byte[] serializeObject(Object obj, String type) {
 		if (obj instanceof IBaseResource) {
-			return FhirContext.forCached(R4).newJsonParser().encodeResourceToString((IBaseResource) obj).getBytes(StandardCharsets.UTF_8);
+			return FhirContext.forCached(R4)
+					.newJsonParser()
+					.encodeResourceToString((IBaseResource) obj)
+					.getBytes(StandardCharsets.UTF_8);
 		}
 		return obj.toString().getBytes(StandardCharsets.UTF_8);
 	}
@@ -214,15 +238,20 @@ public class Mapper {
 	 * @param atRoot  true if this is a root group.
 	 */
 	private void executeGroup(MappingContext context, boolean atRoot) {
-		//Execute group that are extended first. (recursive call)
+		// Execute group that are extended first. (recursive call)
 		if (context.getGroup().hasExtends()) {
-			ResolvedGroup resolvedGroup = resolveGroupReference(context, context.getGroup().getExtends());
-			MappingContext childContext = new MappingContext(resolvedGroup.targetMap, resolvedGroup.target, context.getVariables().copy());
+			ResolvedGroup resolvedGroup =
+					resolveGroupReference(context, context.getGroup().getExtends());
+			MappingContext childContext = new MappingContext(
+					resolvedGroup.targetMap,
+					resolvedGroup.target,
+					context.getVariables().copy());
 			executeGroup(childContext, false);
 		}
 
 		// Then execute rules from the group.
-		for (StructureMap.StructureMapGroupRuleComponent rule : context.getGroup().getRule()) {
+		for (StructureMap.StructureMapGroupRuleComponent rule :
+				context.getGroup().getRule()) {
 			context.setRule(rule);
 			executeRule(context, atRoot);
 		}
@@ -249,25 +278,34 @@ public class Mapper {
 
 				// If rule has sub-rules, execute them
 				if (context.getRule().hasRule()) {
-					for (StructureMap.StructureMapGroupRuleComponent childRule : context.getRule().getRule()) {
-						MappingContext childContext = new MappingContext(context.getStructureMap(), context.getGroup(), variables);
+					for (StructureMap.StructureMapGroupRuleComponent childRule :
+							context.getRule().getRule()) {
+						MappingContext childContext =
+								new MappingContext(context.getStructureMap(), context.getGroup(), variables);
 						childContext.setRule(childRule);
 						executeRule(childContext, false);
 					}
 				}
 				// If no sub-rules, try to get dependent rules.
 				else if (context.getRule().hasDependent()) {
-					for (StructureMap.StructureMapGroupRuleDependentComponent dependent : context.getRule().getDependent()) {
-						MappingContext childContext = new MappingContext(context.getStructureMap(), context.getGroup(), variables);
+					for (StructureMap.StructureMapGroupRuleDependentComponent dependent :
+							context.getRule().getDependent()) {
+						MappingContext childContext =
+								new MappingContext(context.getStructureMap(), context.getGroup(), variables);
 						executeDependency(childContext, dependent);
 					}
-				} else if (context.getRule().getSource().size() == 1 && context.getRule().getSourceFirstRep().hasVariable()
-					&& context.getRule().getTarget().size() == 1 && context.getRule().getTargetFirstRep().hasVariable()
-					&& context.getRule().getTargetFirstRep().getTransform() == StructureMap.StructureMapTransform.CREATE
-					&& !context.getRule().getTargetFirstRep().hasParameter()) {
+				} else if (context.getRule().getSource().size() == 1
+						&& context.getRule().getSourceFirstRep().hasVariable()
+						&& context.getRule().getTarget().size() == 1
+						&& context.getRule().getTargetFirstRep().hasVariable()
+						&& context.getRule().getTargetFirstRep().getTransform()
+								== StructureMap.StructureMapTransform.CREATE
+						&& !context.getRule().getTargetFirstRep().hasParameter()) {
 
-					Base source = (Base) variables.get(INPUT, context.getRule().getSourceFirstRep().getVariable());
-					Base target = (Base) variables.get(OUTPUT, context.getRule().getTargetFirstRep().getVariable());
+					Base source = (Base) variables.get(
+							INPUT, context.getRule().getSourceFirstRep().getVariable());
+					Base target = (Base) variables.get(
+							OUTPUT, context.getRule().getTargetFirstRep().getVariable());
 					String sourceType = source.fhirType();
 					String targetType = target.fhirType();
 					ResolvedGroup defGroup = resolveGroupByTypes(context, sourceType, targetType);
@@ -280,31 +318,39 @@ public class Mapper {
 				}
 			}
 		}
-		//If no sources still process target
+		// If no sources still process target
 		else {
 			processTargets(context, atRoot);
 
 			// If rule has sub-rules, execute them
 			if (context.getRule().hasRule()) {
-				for (StructureMap.StructureMapGroupRuleComponent childRule : context.getRule().getRule()) {
-					MappingContext childContext = new MappingContext(context.getStructureMap(), context.getGroup(), context.getVariables());
+				for (StructureMap.StructureMapGroupRuleComponent childRule :
+						context.getRule().getRule()) {
+					MappingContext childContext =
+							new MappingContext(context.getStructureMap(), context.getGroup(), context.getVariables());
 					childContext.setRule(childRule);
 					executeRule(childContext, false);
 				}
 			}
 			// If no sub-rules, try to get dependent rules.
 			else if (context.getRule().hasDependent()) {
-				for (StructureMap.StructureMapGroupRuleDependentComponent dependent : context.getRule().getDependent()) {
-					MappingContext childContext = new MappingContext(context.getStructureMap(), context.getGroup(), context.getVariables());
+				for (StructureMap.StructureMapGroupRuleDependentComponent dependent :
+						context.getRule().getDependent()) {
+					MappingContext childContext =
+							new MappingContext(context.getStructureMap(), context.getGroup(), context.getVariables());
 					executeDependency(childContext, dependent);
 				}
-			} else if (context.getRule().getSource().size() == 1 && context.getRule().getSourceFirstRep().hasVariable()
-				&& context.getRule().getTarget().size() == 1 && context.getRule().getTargetFirstRep().hasVariable()
-				&& context.getRule().getTargetFirstRep().getTransform() == StructureMap.StructureMapTransform.CREATE
-				&& !context.getRule().getTargetFirstRep().hasParameter()) {
+			} else if (context.getRule().getSource().size() == 1
+					&& context.getRule().getSourceFirstRep().hasVariable()
+					&& context.getRule().getTarget().size() == 1
+					&& context.getRule().getTargetFirstRep().hasVariable()
+					&& context.getRule().getTargetFirstRep().getTransform() == StructureMap.StructureMapTransform.CREATE
+					&& !context.getRule().getTargetFirstRep().hasParameter()) {
 
-				Base source = (Base) context.getVariables().get(INPUT, context.getRule().getSourceFirstRep().getVariable());
-				Base target = (Base) context.getVariables().get(OUTPUT, context.getRule().getTargetFirstRep().getVariable());
+				Base source = (Base) context.getVariables()
+						.get(INPUT, context.getRule().getSourceFirstRep().getVariable());
+				Base target = (Base) context.getVariables()
+						.get(OUTPUT, context.getRule().getTargetFirstRep().getVariable());
 				String sourceType = source.fhirType();
 				String targetType = target.fhirType();
 				ResolvedGroup defGroup = resolveGroupByTypes(context, sourceType, targetType);
@@ -322,11 +368,11 @@ public class Mapper {
 		String sourceContext = context.getSources().get(0).getContext();
 
 		String type = context.getGroup().getInput().stream()
-			.filter(input -> sourceContext.equals(input.getName()))
-			.map(StructureMap.StructureMapGroupInputComponent::getType)
-			.findFirst()
-			.orElse(context.getGroup().getInput().get(0).getType());
-			//.orElse("Resource");
+				.filter(input -> sourceContext.equals(input.getName()))
+				.map(StructureMap.StructureMapGroupInputComponent::getType)
+				.findFirst()
+				.orElse(context.getGroup().getInput().get(0).getType());
+		// .orElse("Resource");
 
 		switch (type) {
 			case "CSV":
@@ -336,11 +382,13 @@ public class Mapper {
 			case "HPRIM":
 				return processHPRIMSource(context, localVariables);
 			case "XML":
-				//Uses JSON processing as XML are translated to JSON
+				// Uses JSON processing as XML are translated to JSON
 			case "JSON":
 				return processJsonSource(context, localVariables);
 			default:
-				if ((localVariables.get(INPUT, context.getRule().getSource().get(0).getContext())) instanceof JSONObject) {
+				if ((localVariables.get(
+								INPUT, context.getRule().getSource().get(0).getContext()))
+						instanceof JSONObject) {
 					return processJsonSource(context, localVariables);
 				}
 				return processFHIRSources(context, localVariables);
@@ -355,35 +403,39 @@ public class Mapper {
 	 * @return a list of variables for all matched sources
 	 */
 	private List<Variables> processCSVSource(MappingContext context, Variables localVariables) {
-		if (context.getSources().stream().map(StructureMap.StructureMapGroupRuleSourceComponent::getContext)
-			.distinct().count() > 1) {
-			throw new InvalidRequestException(String.format("Rule \"%s\": multiple sources shall come from the same CSV input", context.getRule().getName()));
+		if (context.getSources().stream()
+						.map(StructureMap.StructureMapGroupRuleSourceComponent::getContext)
+						.distinct()
+						.count()
+				> 1) {
+			throw new InvalidRequestException(String.format(
+					"Rule \"%s\": multiple sources shall come from the same CSV input",
+					context.getRule().getName()));
 		}
 
-		Object sourceObject = localVariables.get(INPUT, context.getSources().get(0).getContext());
+		Object sourceObject =
+				localVariables.get(INPUT, context.getSources().get(0).getContext());
 
 		if (sourceObject == null) {
-			throw new InvalidRequestException(
-				String.format("Unknown input variable %s in %s for rule %s",
+			throw new InvalidRequestException(String.format(
+					"Unknown input variable %s in %s for rule %s",
 					context.getSources().get(0).getContext(),
 					context.getStructureMap().getUrl(),
 					context.getRule().getName()));
 		} else if (!(sourceObject instanceof CSVRecord || sourceObject instanceof CSVRecords)) {
-			throw new InvalidRequestException(
-				String.format("Input variable %s in %s for rule %s is not a CSV Object !",
+			throw new InvalidRequestException(String.format(
+					"Input variable %s in %s for rule %s is not a CSV Object !",
 					context.getSources().get(0).getContext(),
 					context.getStructureMap().getUrl(),
 					context.getRule().getName()));
 		} else if (context.getSources().stream().anyMatch(s -> !s.hasElement())) {
-			throw new InvalidRequestException(
-				String.format("Element should not be null in %s for rule %s !",
-					context.getStructureMap().getUrl(),
-					context.getRule().getName()));
+			throw new InvalidRequestException(String.format(
+					"Element should not be null in %s for rule %s !",
+					context.getStructureMap().getUrl(), context.getRule().getName()));
 		} else if (context.getSources().stream().anyMatch(s -> !s.hasType())) {
-			throw new InvalidRequestException(
-				String.format("Type should not be null in %s for rule %s !",
-					context.getStructureMap().getUrl(),
-					context.getRule().getName()));
+			throw new InvalidRequestException(String.format(
+					"Type should not be null in %s for rule %s !",
+					context.getStructureMap().getUrl(), context.getRule().getName()));
 		}
 
 		List<List<Base>> items;
@@ -391,9 +443,9 @@ public class Mapper {
 		CSVRecords csvRecords = (CSVRecords) sourceObject;
 
 		items = csvRecords.getRecords().stream()
-			.map(record -> processCSVRecord(context, record))
-			.filter(record-> record != null)
-			.collect(Collectors.toList());
+				.map(record -> processCSVRecord(context, record))
+				.filter(record -> record != null)
+				.collect(Collectors.toList());
 
 		List<Variables> result = new ArrayList<>();
 		for (List<Base> recordItems : items) {
@@ -416,31 +468,33 @@ public class Mapper {
 	 * @return a list of variables for all matched sources
 	 */
 	private List<Variables> processJsonSource(MappingContext context, Variables localVariables) {
-		//TODO Handle multiple sources ?
+		// TODO Handle multiple sources ?
 		if (context.getRule().getSource().size() > 1) {
-			throw new InvalidRequestException(String.format("Rule \"%s\": multiple sources are not handled yet", context.getRule().getName()));
+			throw new InvalidRequestException(String.format(
+					"Rule \"%s\": multiple sources are not handled yet",
+					context.getRule().getName()));
 		}
 
-		StructureMap.StructureMapGroupRuleSourceComponent source = context.getRule().getSource().get(0);
+		StructureMap.StructureMapGroupRuleSourceComponent source =
+				context.getRule().getSource().get(0);
 
-		Object sourceObject = localVariables.get(INPUT, context.getSources().get(0).getContext());
+		Object sourceObject =
+				localVariables.get(INPUT, context.getSources().get(0).getContext());
 
 		if (sourceObject == null) {
-			throw new InvalidRequestException(
-				String.format("Unknown input variable %s in %s for rule %s",
+			throw new InvalidRequestException(String.format(
+					"Unknown input variable %s in %s for rule %s",
 					context.getSources().get(0).getContext(),
 					context.getStructureMap().getUrl(),
 					context.getRule().getName()));
 		} else if (context.getSources().stream().anyMatch(s -> !s.hasElement())) {
-			throw new InvalidRequestException(
-				String.format("Element should not be null in %s for rule %s !",
-					context.getStructureMap().getUrl(),
-					context.getRule().getName()));
+			throw new InvalidRequestException(String.format(
+					"Element should not be null in %s for rule %s !",
+					context.getStructureMap().getUrl(), context.getRule().getName()));
 		} else if (context.getSources().stream().anyMatch(s -> !s.hasType())) {
-			throw new InvalidRequestException(
-				String.format("Type should not be null in %s for rule %s !",
-					context.getStructureMap().getUrl(),
-					context.getRule().getName()));
+			throw new InvalidRequestException(String.format(
+					"Type should not be null in %s for rule %s !",
+					context.getStructureMap().getUrl(), context.getRule().getName()));
 		}
 
 		JSONObject jsonObject = (JSONObject) sourceObject;
@@ -467,7 +521,8 @@ public class Mapper {
 					break;
 				case ONLYONE:
 					if (items.size() > 1) {
-						throw new FHIRException("Rule \"" + context.getRule().getName() + "\": Check condition failed: the collection has more than one item");
+						throw new FHIRException("Rule \"" + context.getRule().getName()
+								+ "\": Check condition failed: the collection has more than one item");
 					}
 					break;
 				case NULL:
@@ -493,36 +548,38 @@ public class Mapper {
 	 * @return a list of variables for all matched sources
 	 */
 	private List<Variables> processHL7v2Source(MappingContext context, Variables localVariables) {
-		//TODO Handle multiple sources ?
+		// TODO Handle multiple sources ?
 		if (context.getRule().getSource().size() > 1) {
-			throw new InvalidRequestException(String.format("Rule \"%s\": multiple sources are not handled yet", context.getRule().getName()));
+			throw new InvalidRequestException(String.format(
+					"Rule \"%s\": multiple sources are not handled yet",
+					context.getRule().getName()));
 		}
 
-		StructureMap.StructureMapGroupRuleSourceComponent source = context.getRule().getSource().get(0);
+		StructureMap.StructureMapGroupRuleSourceComponent source =
+				context.getRule().getSource().get(0);
 
-		Object sourceObject = localVariables.get(INPUT, context.getSources().get(0).getContext());
+		Object sourceObject =
+				localVariables.get(INPUT, context.getSources().get(0).getContext());
 
 		if (sourceObject == null) {
-			throw new InvalidRequestException(
-				String.format("Unknown input variable %s in %s for rule %s",
+			throw new InvalidRequestException(String.format(
+					"Unknown input variable %s in %s for rule %s",
 					context.getSources().get(0).getContext(),
 					context.getStructureMap().getUrl(),
 					context.getRule().getName()));
 		} else if (context.getSources().stream().anyMatch(s -> !s.hasElement())) {
-			throw new InvalidRequestException(
-				String.format("Element should not be null in %s for rule %s !",
-					context.getStructureMap().getUrl(),
-					context.getRule().getName()));
+			throw new InvalidRequestException(String.format(
+					"Element should not be null in %s for rule %s !",
+					context.getStructureMap().getUrl(), context.getRule().getName()));
 		} else if (context.getSources().stream().anyMatch(s -> !s.hasType())) {
-			throw new InvalidRequestException(
-				String.format("Type should not be null in %s for rule %s !",
-					context.getStructureMap().getUrl(),
-					context.getRule().getName()));
+			throw new InvalidRequestException(String.format(
+					"Type should not be null in %s for rule %s !",
+					context.getStructureMap().getUrl(), context.getRule().getName()));
 		}
 
 		List<Object> items;
 
-		//Only message or can it be segments ?
+		// Only message or can it be segments ?
 		if (sourceObject instanceof Message) {
 			items = processHL7v2Object(context, sourceObject);
 		} else if (sourceObject instanceof GenericSegment) {
@@ -553,31 +610,30 @@ public class Mapper {
 		// TODO Handle multiple sources?
 		if (context.getRule().getSource().size() > 1) {
 			throw new InvalidRequestException(String.format(
-				"Rule \"%s\": multiple sources are not handled yet",
-				context.getRule().getName()
-			));
+					"Rule \"%s\": multiple sources are not handled yet",
+					context.getRule().getName()));
 		}
 
-		StructureMap.StructureMapGroupRuleSourceComponent source = context.getRule().getSource().get(0);
+		StructureMap.StructureMapGroupRuleSourceComponent source =
+				context.getRule().getSource().get(0);
 
-		Object sourceObject = localVariables.get(INPUT, context.getSources().get(0).getContext());
+		Object sourceObject =
+				localVariables.get(INPUT, context.getSources().get(0).getContext());
 
 		if (sourceObject == null) {
-			throw new InvalidRequestException(
-				String.format("Unknown input variable %s in %s for rule %s",
+			throw new InvalidRequestException(String.format(
+					"Unknown input variable %s in %s for rule %s",
 					context.getSources().get(0).getContext(),
 					context.getStructureMap().getUrl(),
 					context.getRule().getName()));
 		} else if (!source.hasElement()) {
-			throw new InvalidRequestException(
-				String.format("Element should not be null in %s for rule %s !",
-					context.getStructureMap().getUrl(),
-					context.getRule().getName()));
+			throw new InvalidRequestException(String.format(
+					"Element should not be null in %s for rule %s !",
+					context.getStructureMap().getUrl(), context.getRule().getName()));
 		} else if (!source.hasType()) {
-			throw new InvalidRequestException(
-				String.format("Type should not be null in %s for rule %s !",
-					context.getStructureMap().getUrl(),
-					context.getRule().getName()));
+			throw new InvalidRequestException(String.format(
+					"Type should not be null in %s for rule %s !",
+					context.getStructureMap().getUrl(), context.getRule().getName()));
 		}
 
 		List<Object> items;
@@ -602,12 +658,15 @@ public class Mapper {
 	}
 
 	private List<Variables> processFHIRSources(MappingContext context, Variables localVariables) {
-		//TODO Handle multiple sources ?
+		// TODO Handle multiple sources ?
 		if (context.getRule().getSource().size() > 1) {
-			throw new InvalidRequestException(String.format("Rule \"%s\": multiple sources are not handled yet", context.getRule().getName()));
+			throw new InvalidRequestException(String.format(
+					"Rule \"%s\": multiple sources are not handled yet",
+					context.getRule().getName()));
 		}
 
-		StructureMap.StructureMapGroupRuleSourceComponent source = context.getRule().getSource().get(0);
+		StructureMap.StructureMapGroupRuleSourceComponent source =
+				context.getRule().getSource().get(0);
 
 		List<Base> items;
 		if (source.getContext().equals("@search")) {
@@ -617,7 +676,8 @@ public class Mapper {
 				source.setUserData("map.search.expression", expressionNode);
 			}
 
-			String search = this.fhirPathEngine.evaluateToString(localVariables, null, null, new StringType(), expressionNode);
+			String search =
+					this.fhirPathEngine.evaluateToString(localVariables, null, null, new StringType(), expressionNode);
 			items = this.services.performSearch(context.getAppInfo(), search);
 		} else {
 			items = new ArrayList<>();
@@ -626,8 +686,9 @@ public class Mapper {
 				base = (Base) localVariables.get(OUTPUT, source.getContext());
 			}
 			if (base == null && !source.hasDefaultValue()) {
-				throw new FHIRException(String.format("Unknown input variable %s in rule %s and no default value is provided ! ",
-					source.getContext(), context.getRule().getName()));
+				throw new FHIRException(String.format(
+						"Unknown input variable %s in rule %s and no default value is provided ! ",
+						source.getContext(), context.getRule().getName()));
 			} else if (base != null) {
 				if (!source.hasElement()) {
 					items.add(base);
@@ -648,8 +709,8 @@ public class Mapper {
 
 		if (source.hasType()) {
 			items = items.stream()
-				.filter(item -> item != null && source.getType().equals(item.fhirType()))
-				.collect(Collectors.toList());
+					.filter(item -> item != null && source.getType().equals(item.fhirType()))
+					.collect(Collectors.toList());
 		}
 
 		if (source.hasCondition()) {
@@ -661,8 +722,8 @@ public class Mapper {
 
 			ExpressionNode finalExpression = expression;
 			items = items.stream()
-				.filter(item -> fhirPathEngine.evaluateToBoolean(localVariables, null, null, item, finalExpression))
-				.collect(Collectors.toList());
+					.filter(item -> fhirPathEngine.evaluateToBoolean(localVariables, null, null, item, finalExpression))
+					.collect(Collectors.toList());
 		}
 
 		if (source.hasCheck()) {
@@ -698,7 +759,8 @@ public class Mapper {
 					break;
 				case ONLYONE:
 					if (items.size() > 1) {
-						throw new FHIRException("Rule \"" + context.getRule().getName() + "\": Check condition failed: the collection has more than one item");
+						throw new FHIRException("Rule \"" + context.getRule().getName()
+								+ "\": Check condition failed: the collection has more than one item");
 					}
 					break;
 				case NULL:
@@ -723,15 +785,16 @@ public class Mapper {
 		for (StructureMap.StructureMapGroupRuleSourceComponent source : context.getSources()) {
 			Base item = null;
 			String elementName = source.getElement();
-			//TODO Catch errors ?
+			// TODO Catch errors ?
 			String elementStringValue = sourceRecord.get(elementName);
 			if (elementStringValue != null) {
 				item = getFHIRItem(elementStringValue, source.getType());
-			} else if (source.hasDefaultValue() && source.getType().equals(source.getDefaultValue().fhirType())) {
+			} else if (source.hasDefaultValue()
+					&& source.getType().equals(source.getDefaultValue().fhirType())) {
 				item = source.getDefaultValue();
 			} else if (!source.getType().equals(source.getDefaultValue().fhirType())) {
-				throw new InvalidRequestException(
-					String.format("Default value type does not match in %s for rule %s source %s !",
+				throw new InvalidRequestException(String.format(
+						"Default value type does not match in %s for rule %s source %s !",
 						context.getStructureMap().getUrl(), context.getRule().getName(), source.getContext()));
 			}
 
@@ -786,12 +849,17 @@ public class Mapper {
 							String elementStringValue = elementValue.toString();
 							if (elementStringValue != null) {
 								item = getFHIRItem(elementStringValue, source.getType());
-							} else if (source.hasDefaultValue() && source.getType().equals(source.getDefaultValue().fhirType())) {
+							} else if (source.hasDefaultValue()
+									&& source.getType()
+											.equals(source.getDefaultValue().fhirType())) {
 								item = source.getDefaultValue();
-							} else if (!source.getType().equals(source.getDefaultValue().fhirType())) {
-								throw new InvalidRequestException(
-									String.format("Default value type does not match in %s for rule %s source %s !",
-										context.getStructureMap().getUrl(), context.getRule().getName(), source.getContext()));
+							} else if (!source.getType()
+									.equals(source.getDefaultValue().fhirType())) {
+								throw new InvalidRequestException(String.format(
+										"Default value type does not match in %s for rule %s source %s !",
+										context.getStructureMap().getUrl(),
+										context.getRule().getName(),
+										source.getContext()));
 							}
 
 							checkValues(source, List.of(item), context.getRule().getName());
@@ -807,12 +875,15 @@ public class Mapper {
 					String elementStringValue = element.toString();
 					if (elementStringValue != null) {
 						item = getFHIRItem(elementStringValue, source.getType());
-					} else if (source.hasDefaultValue() && source.getType().equals(source.getDefaultValue().fhirType())) {
+					} else if (source.hasDefaultValue()
+							&& source.getType().equals(source.getDefaultValue().fhirType())) {
 						item = source.getDefaultValue();
 					} else if (!source.getType().equals(source.getDefaultValue().fhirType())) {
-						throw new InvalidRequestException(
-							String.format("Default value type does not match in %s for rule %s source %s !",
-								context.getStructureMap().getUrl(), context.getRule().getName(), source.getContext()));
+						throw new InvalidRequestException(String.format(
+								"Default value type does not match in %s for rule %s source %s !",
+								context.getStructureMap().getUrl(),
+								context.getRule().getName(),
+								source.getContext()));
 					}
 
 					checkValues(source, List.of(item), context.getRule().getName());
@@ -864,15 +935,16 @@ public class Mapper {
 						fields = List.of((Varies) segments.get(0).getField(path.getField(), path.getFieldRepetition()));
 					} else {
 						fields = Arrays.stream(segments.get(0).getField(path.getField()))
-							.map(t -> (Varies) t)
-							.collect(Collectors.toList());
+								.map(t -> (Varies) t)
+								.collect(Collectors.toList());
 					}
 
 					String elementStringValue = null;
 
 					if (!fields.isEmpty()) {
 						if (path.getComponent() != null) {
-							GenericComposite fieldData = (GenericComposite) fields.get(0).getData();
+							GenericComposite fieldData =
+									(GenericComposite) fields.get(0).getData();
 							Varies component = (Varies) fieldData.getComponent(path.getComponent());
 							if (path.getSubComponent() != null) {
 								GenericComposite componentData = (GenericComposite) component.getData();
@@ -888,12 +960,16 @@ public class Mapper {
 
 					if (elementStringValue != null) {
 						item = getFHIRItem(elementStringValue, source.getType());
-					} else if (source.hasDefaultValue() && source.getType().equals(source.getDefaultValue().fhirType())) {
+					} else if (source.hasDefaultValue()
+							&& source.getType().equals(source.getDefaultValue().fhirType())) {
 						item = source.getDefaultValue();
-					} else if (source.hasDefaultValue() && !source.getType().equals(source.getDefaultValue().fhirType())) {
-						throw new InvalidRequestException(
-							String.format("Default value type does not match in %s for rule %s source %s !",
-								context.getStructureMap().getUrl(), context.getRule().getName(), source.getContext()));
+					} else if (source.hasDefaultValue()
+							&& !source.getType().equals(source.getDefaultValue().fhirType())) {
+						throw new InvalidRequestException(String.format(
+								"Default value type does not match in %s for rule %s source %s !",
+								context.getStructureMap().getUrl(),
+								context.getRule().getName(),
+								source.getContext()));
 					}
 
 					if (item != null) {
@@ -969,8 +1045,7 @@ public class Mapper {
 
 		for (Group group : currentGroups) {
 			for (String name : group.getNames()) {
-				if (!normalizeSegmentName(name)
-					.equalsIgnoreCase(normalizeSegmentName(path.getSegment()))) {
+				if (!normalizeSegmentName(name).equalsIgnoreCase(normalizeSegmentName(path.getSegment()))) {
 					continue;
 				}
 
@@ -981,14 +1056,14 @@ public class Mapper {
 							result.add(toGenericSegment(segs[i]));
 						}
 					}
-				} catch (HL7Exception ignored) {}
+				} catch (HL7Exception ignored) {
+				}
 			}
 		}
 
 		if (result.isEmpty()) {
 			for (String name : msg.getNames()) {
-				if (!normalizeSegmentName(name)
-					.equalsIgnoreCase(normalizeSegmentName(path.getSegment()))) {
+				if (!normalizeSegmentName(name).equalsIgnoreCase(normalizeSegmentName(path.getSegment()))) {
 					continue;
 				}
 				try {
@@ -998,7 +1073,8 @@ public class Mapper {
 							result.add(toGenericSegment(segs[i]));
 						}
 					}
-				} catch (HL7Exception ignored) {}
+				} catch (HL7Exception ignored) {
+				}
 			}
 		}
 
@@ -1020,7 +1096,8 @@ public class Mapper {
 					if (structure instanceof Group) results.add((Group) structure);
 				}
 			}
-		} catch (Exception ignored) {}
+		} catch (Exception ignored) {
+		}
 		return results;
 	}
 
@@ -1033,13 +1110,13 @@ public class Mapper {
 					if (structure instanceof Group) {
 						result.addAll(scanGroupsRecursively((Group) structure, path));
 					} else if (structure instanceof Segment) {
-						if (normalizeSegmentName(name)
-							.equalsIgnoreCase(normalizeSegmentName(path.getSegment()))) {
+						if (normalizeSegmentName(name).equalsIgnoreCase(normalizeSegmentName(path.getSegment()))) {
 							result.add(toGenericSegment(structure));
 						}
 					}
 				}
-			} catch (Exception ignored) {}
+			} catch (Exception ignored) {
+			}
 		}
 
 		return result;
@@ -1091,7 +1168,11 @@ public class Mapper {
 
 					String[] field = segment.getFields().get(path.getField());
 					if (field.length <= (path.getFieldRepetition() != null ? path.getFieldRepetition() : 0)) {
-						logger.info("Repetition {} not found in field {} of segment {}", path.getFieldRepetition(), path.getField() + 1, path.getSegment());
+						logger.info(
+								"Repetition {} not found in field {} of segment {}",
+								path.getFieldRepetition(),
+								path.getField() + 1,
+								path.getSegment());
 						continue;
 					}
 
@@ -1107,7 +1188,11 @@ public class Mapper {
 					if (path.hasExplicitComponent()) {
 						String[] components = value.split("\\^", -1);
 						if (components.length <= path.getComponent()) {
-							logger.info("Component {} not found in field {} of segment {}", path.getComponent() + 1, path.getField() + 1, path.getSegment());
+							logger.info(
+									"Component {} not found in field {} of segment {}",
+									path.getComponent() + 1,
+									path.getField() + 1,
+									path.getSegment());
 							continue;
 						}
 						value = components[path.getComponent()];
@@ -1116,7 +1201,12 @@ public class Mapper {
 						if (path.getSubComponent() != null) {
 							String[] subComponents = value.split("&", -1);
 							if (subComponents.length <= path.getSubComponent()) {
-								logger.info("Subcomponent {} not found in component {} of field {} segment {}", path.getSubComponent() + 1, path.getComponent() + 1, path.getField() + 1, path.getSegment());
+								logger.info(
+										"Subcomponent {} not found in component {} of field {} segment {}",
+										path.getSubComponent() + 1,
+										path.getComponent() + 1,
+										path.getField() + 1,
+										path.getSegment());
 								continue;
 							}
 							value = subComponents[path.getSubComponent()];
@@ -1179,7 +1269,8 @@ public class Mapper {
 			case "Coding":
 			case "Quantity":
 			case "Reference":
-				throw new UnsupportedOperationException(String.format("Source element type not supported : %s", elementType));
+				throw new UnsupportedOperationException(
+						String.format("Source element type not supported : %s", elementType));
 			case "string":
 			default:
 				return new StringType(elementStringValue);
@@ -1193,7 +1284,8 @@ public class Mapper {
 	 * @param item   the item.
 	 * @return true if matches.
 	 */
-	private boolean matchesCondition(StructureMap.StructureMapGroupRuleSourceComponent source, Base item, Variables variables) {
+	private boolean matchesCondition(
+			StructureMap.StructureMapGroupRuleSourceComponent source, Base item, Variables variables) {
 		if (source.hasCondition()) {
 			ExpressionNode expression = fhirPathEngine.parse(source.getCondition());
 			return fhirPathEngine.evaluateToBoolean(variables, null, null, item, expression);
@@ -1208,7 +1300,8 @@ public class Mapper {
 	 * @param items  the items to check.
 	 * @param ruleId the Rule ID.
 	 */
-	private void checkValues(StructureMap.StructureMapGroupRuleSourceComponent source, List<Base> items, String ruleId) {
+	private void checkValues(
+			StructureMap.StructureMapGroupRuleSourceComponent source, List<Base> items, String ruleId) {
 		if (source.hasCheck()) {
 			ExpressionNode expr = fhirPathEngine.parse(source.getCheck());
 			for (Base item : items) {
@@ -1226,7 +1319,8 @@ public class Mapper {
 	 * @param atRoot  true if in a root group.
 	 */
 	private void processTargets(MappingContext context, boolean atRoot) {
-		for (StructureMap.StructureMapGroupRuleTargetComponent target : context.getRule().getTarget()) {
+		for (StructureMap.StructureMapGroupRuleTargetComponent target :
+				context.getRule().getTarget()) {
 			context.setTarget(target);
 			processTarget(context, atRoot);
 		}
@@ -1241,20 +1335,23 @@ public class Mapper {
 	private void processTarget(MappingContext context, boolean atRoot) {
 		Object targetedElement = null;
 		if (context.getTarget().hasContext()) {
-			targetedElement = context.getVariables().get(OUTPUT, context.getTarget().getContext());
+			targetedElement =
+					context.getVariables().get(OUTPUT, context.getTarget().getContext());
 			if (targetedElement == null) {
-				targetedElement = context.getVariables().get(INPUT, context.getTarget().getContext());
+				targetedElement =
+						context.getVariables().get(INPUT, context.getTarget().getContext());
 			}
 			if (targetedElement == null || !context.getTarget().hasElement()) {
-				throw new InvalidRequestException(String.format("Rule \"%s\": target context not known: %s",
-					context.getRule().getName(), context.getTarget().getContext()));
+				throw new InvalidRequestException(String.format(
+						"Rule \"%s\": target context not known: %s",
+						context.getRule().getName(), context.getTarget().getContext()));
 			}
 		}
 
 		Base result = null;
 
 		if (targetedElement instanceof Base) {
-			//If there is a transform, transform the element
+			// If there is a transform, transform the element
 			if (context.getTarget().hasTransform()) {
 				result = runTransform(context, (Base) targetedElement, atRoot);
 				if (result != null && targetedElement != null) {
@@ -1265,15 +1362,22 @@ public class Mapper {
 			else if (targetedElement != null) {
 				// If the listMode is share, share the variable.
 				if (context.getTarget().hasListMode(StructureMap.StructureMapTargetListMode.SHARE)) {
-					result = (Base) context.getVariables().get(SHARED, context.getTarget().getListRuleId());
+					result = (Base) context.getVariables()
+							.get(SHARED, context.getTarget().getListRuleId());
 					if (result == null) {
-						result = ((Base) targetedElement).makeProperty(context.getTarget().getElement().hashCode(), context.getTarget().getElement());
+						result = ((Base) targetedElement)
+								.makeProperty(
+										context.getTarget().getElement().hashCode(),
+										context.getTarget().getElement());
 						context.getVariables().add(SHARED, context.getTarget().getListRuleId(), result);
 					}
 				}
 				// Else just create the element.
 				else {
-					result = ((Base) targetedElement).makeProperty(context.getTarget().getElement().hashCode(), context.getTarget().getElement());
+					result = ((Base) targetedElement)
+							.makeProperty(
+									context.getTarget().getElement().hashCode(),
+									context.getTarget().getElement());
 				}
 			}
 		} else if (targetedElement instanceof CSVBuilder) {
@@ -1284,13 +1388,16 @@ public class Mapper {
 			}
 
 			if ("header".equals(element) && result != null) {
-				//((CSVBuilder) targetedElement).addHeader(result.castToString(result).getValue());
+				// ((CSVBuilder) targetedElement).addHeader(result.castToString(result).getValue());
 			} else {
 				Base elementVariable = (Base) context.getVariables().get(INPUT, element);
-				String elementName = elementVariable.castToString(elementVariable).getValue();
+				String elementName =
+						elementVariable.castToString(elementVariable).getValue();
 
-				((CSVBuilder) targetedElement).addValue(elementName,
-					result != null ? result.castToString(result).getValue() : "");
+				((CSVBuilder) targetedElement)
+						.addValue(
+								elementName,
+								result != null ? result.castToString(result).getValue() : "");
 			}
 		} else if (targetedElement instanceof JSONBuilder) {
 			String element = context.getTarget().getElement();
@@ -1300,13 +1407,14 @@ public class Mapper {
 			}
 
 			if (result != null) {
-				((JSONBuilder) targetedElement).putByPath(element, result.castToString(result).getValue());
+				((JSONBuilder) targetedElement)
+						.putByPath(element, result.castToString(result).getValue());
 			}
 		} else if (targetedElement instanceof HL7v2Builder hl7) {
 			String element = context.getTarget().getElement();
 
 			Object source = context.getVariables()
-				.get(INPUT, context.getRule().getSource().get(0).getVariable());
+					.get(INPUT, context.getRule().getSource().get(0).getVariable());
 
 			if (!element.contains("-")) {
 
@@ -1330,10 +1438,7 @@ public class Mapper {
 				result = runTransform(context, null, atRoot);
 			}
 
-			hl7.putByPath(
-				element,
-				result != null ? result.castToString(result).getValue() : ""
-			);
+			hl7.putByPath(element, result != null ? result.castToString(result).getValue() : "");
 		}
 
 		// If the target defines a variable, put the result in it.
@@ -1357,24 +1462,37 @@ public class Mapper {
 					return createTransform(context, targetedElement, root);
 				case COPY:
 					// Copy only uses the first parameter
-					return getParameterValue(context.getVariables(), context.getTarget().getParameter().get(0));
+					return getParameterValue(
+							context.getVariables(),
+							context.getTarget().getParameter().get(0));
 				case EVALUATE:
 					return evaluateTransform(context);
 				case TRUNCATE:
-					String source = getParamStringNoNull(context.getVariables(), context.getTarget().getParameter().get(0), context.getTarget().toString());
-					String len = getParamStringNoNull(context.getVariables(), context.getTarget().getParameter().get(1), context.getTarget().toString());
+					String source = getParamStringNoNull(
+							context.getVariables(),
+							context.getTarget().getParameter().get(0),
+							context.getTarget().toString());
+					String len = getParamStringNoNull(
+							context.getVariables(),
+							context.getTarget().getParameter().get(1),
+							context.getTarget().toString());
 					if (Utilities.isInteger(len)) {
 						int l = Integer.parseInt(len);
-						if (source.length() > l)
-							source = source.substring(0, l);
+						if (source.length() > l) source = source.substring(0, l);
 					}
 					return new StringType(source);
 				case CAST:
 					if (context.getTarget().getParameter().size() == 1) {
 						throw new FHIRException("Implicit type parameters on cast not yet supported");
 					}
-					String castSource = getParamStringNoNull(context.getVariables(), context.getTarget().getParameter().get(0), context.getTarget().toString());
-					String castTarget = getParamStringNoNull(context.getVariables(), context.getTarget().getParameter().get(1), context.getTarget().toString());
+					String castSource = getParamStringNoNull(
+							context.getVariables(),
+							context.getTarget().getParameter().get(0),
+							context.getTarget().toString());
+					String castTarget = getParamStringNoNull(
+							context.getVariables(),
+							context.getTarget().getParameter().get(1),
+							context.getTarget().toString());
 					switch (castTarget) {
 						case "string":
 						case "text":
@@ -1405,9 +1523,8 @@ public class Mapper {
 							}
 						case "base64Binary":
 							try {
-								String encoded = Base64.getEncoder().encodeToString(
-									castSource.getBytes(StandardCharsets.UTF_8)
-								);
+								String encoded =
+										Base64.getEncoder().encodeToString(castSource.getBytes(StandardCharsets.UTF_8));
 								return new Base64BinaryType(encoded);
 							} catch (Exception e) {
 								throw new FHIRException("Cannot cast value to base64Binary: " + castSource, e);
@@ -1416,34 +1533,37 @@ public class Mapper {
 							throw new FHIRException(String.format("Cast to %s not yet supported", castTarget));
 					}
 				case APPEND:
-					StringBuilder sb = new StringBuilder(
-						normalizeAppendParam(
-							getParamStringNoNull(
-								context.getVariables(),
-								context.getTarget().getParameter().get(0),
-								context.getTarget().toString()
-							)
-						)
-					);
+					StringBuilder sb = new StringBuilder(normalizeAppendParam(getParamStringNoNull(
+							context.getVariables(),
+							context.getTarget().getParameter().get(0),
+							context.getTarget().toString())));
 					for (int i = 1; i < context.getTarget().getParameter().size(); i++) {
 						String paramValue = getParamStringNoNull(
-							context.getVariables(),
-							context.getTarget().getParameter().get(i),
-							context.getTarget().toString()
-						);
+								context.getVariables(),
+								context.getTarget().getParameter().get(i),
+								context.getTarget().toString());
 						sb.append(normalizeAppendParam(paramValue));
 					}
 					return new StringType(sb.toString());
 				case TRANSLATE:
 					return translate(context);
 				case REFERENCE:
-					Base parameterValue = getParameterValue(context.getVariables(), context.getTarget().getParameter().get(0));
+					Base parameterValue = getParameterValue(
+							context.getVariables(),
+							context.getTarget().getParameter().get(0));
 					if (parameterValue == null) {
-						throw new FHIRException(String.format("Rule \"%s\": Unable to find parameter %s",
-							context.getRule().getName(), ((IdType) context.getTarget().getParameter().get(0).getValue()).asStringValue()));
+						throw new FHIRException(String.format(
+								"Rule \"%s\": Unable to find parameter %s",
+								context.getRule().getName(),
+								((IdType) context.getTarget()
+												.getParameter()
+												.get(0)
+												.getValue())
+										.asStringValue()));
 					} else if (!parameterValue.isResource()) {
-						throw new FHIRException(String.format("Rule \"%s\": Transform engine cannot point at an element of type %s",
-							context.getRule().getName(), parameterValue.fhirType()));
+						throw new FHIRException(String.format(
+								"Rule \"%s\": Transform engine cannot point at an element of type %s",
+								context.getRule().getName(), parameterValue.fhirType()));
 					} else {
 						String id = parameterValue.getIdBase();
 						if (id == null) {
@@ -1455,38 +1575,74 @@ public class Mapper {
 				case UUID:
 					return new IdType(UUID.randomUUID().toString());
 				case POINTER:
-					parameterValue = getParameterValue(context.getVariables(), context.getTarget().getParameter().get(0));
+					parameterValue = getParameterValue(
+							context.getVariables(),
+							context.getTarget().getParameter().get(0));
 					if (parameterValue instanceof Resource) {
 						return new UriType("urn:uuid:" + ((Resource) parameterValue).getId());
 					} else {
-						throw new FHIRException(String.format("Rule \"%s\": Transform engine cannot point at an element of type %s",
-							context.getRule().getName(), parameterValue.fhirType()));
+						throw new FHIRException(String.format(
+								"Rule \"%s\": Transform engine cannot point at an element of type %s",
+								context.getRule().getName(), parameterValue.fhirType()));
 					}
 				case CC:
-					return new CodeableConcept().addCoding(buildCoding(
-						getParamStringNoNull(context.getVariables(), context.getTarget().getParameter().get(0), context.getTarget().toString()),
-						getParamStringNoNull(context.getVariables(), context.getTarget().getParameter().get(1), context.getTarget().toString()),
-						context.getTarget().getParameter().size() >= 3
-							? getParamStringNoNull(context.getVariables(), context.getTarget().getParameter().get(2), context.getTarget().toString())
-							: null));
+					return new CodeableConcept()
+							.addCoding(buildCoding(
+									getParamStringNoNull(
+											context.getVariables(),
+											context.getTarget().getParameter().get(0),
+											context.getTarget().toString()),
+									getParamStringNoNull(
+											context.getVariables(),
+											context.getTarget().getParameter().get(1),
+											context.getTarget().toString()),
+									context.getTarget().getParameter().size() >= 3
+											? getParamStringNoNull(
+													context.getVariables(),
+													context.getTarget()
+															.getParameter()
+															.get(2),
+													context.getTarget().toString())
+											: null));
 				case C:
-					return buildCoding(getParamStringNoNull(context.getVariables(), context.getTarget().getParameter().get(0), context.getTarget().toString()),
-						getParamStringNoNull(context.getVariables(), context.getTarget().getParameter().get(1), context.getTarget().toString()),
-						context.getTarget().getParameter().size() >= 3
-							? getParamStringNoNull(context.getVariables(), context.getTarget().getParameter().get(2), context.getTarget().toString())
-							: null);
+					return buildCoding(
+							getParamStringNoNull(
+									context.getVariables(),
+									context.getTarget().getParameter().get(0),
+									context.getTarget().toString()),
+							getParamStringNoNull(
+									context.getVariables(),
+									context.getTarget().getParameter().get(1),
+									context.getTarget().toString()),
+							context.getTarget().getParameter().size() >= 3
+									? getParamStringNoNull(
+											context.getVariables(),
+											context.getTarget().getParameter().get(2),
+											context.getTarget().toString())
+									: null);
 				case DATEOP:
-					String dateSource = getParamStringNoNull(context.getVariables(), context.getTarget().getParameter().get(0), context.getTarget().toString());
-					String inputFormat = getParamStringNoNull(context.getVariables(), context.getTarget().getParameter().get(1), context.getTarget().toString());
-					String outputFormatOrType = (context.getTarget().getParameter().size() > 2)
-						? getParamStringNoNull(context.getVariables(), context.getTarget().getParameter().get(2), context.getTarget().toString())
-						: null;
+					String dateSource = getParamStringNoNull(
+							context.getVariables(),
+							context.getTarget().getParameter().get(0),
+							context.getTarget().toString());
+					String inputFormat = getParamStringNoNull(
+							context.getVariables(),
+							context.getTarget().getParameter().get(1),
+							context.getTarget().toString());
+					String outputFormatOrType =
+							(context.getTarget().getParameter().size() > 2)
+									? getParamStringNoNull(
+											context.getVariables(),
+											context.getTarget().getParameter().get(2),
+											context.getTarget().toString())
+									: null;
 
-					boolean forceInstant = outputFormatOrType != null && "instant".equalsIgnoreCase(outputFormatOrType.trim());
-					boolean forceTime = outputFormatOrType != null && "time".equalsIgnoreCase(outputFormatOrType.trim());
+					boolean forceInstant =
+							outputFormatOrType != null && "instant".equalsIgnoreCase(outputFormatOrType.trim());
+					boolean forceTime =
+							outputFormatOrType != null && "time".equalsIgnoreCase(outputFormatOrType.trim());
 
-					DateTimeFormatter outputFormatter =
-						(!forceInstant && !forceTime && outputFormatOrType != null)
+					DateTimeFormatter outputFormatter = (!forceInstant && !forceTime && outputFormatOrType != null)
 							? DateTimeFormatter.ofPattern(outputFormatOrType)
 							: null;
 
@@ -1496,7 +1652,8 @@ public class Mapper {
 						LocalDateTime ldt = LocalDateTime.parse(dateSource, inputFormatter);
 
 						if (forceInstant) {
-							return new InstantType(Date.from(ldt.atZone(ZoneOffset.UTC).toInstant()));
+							return new InstantType(
+									Date.from(ldt.atZone(ZoneOffset.UTC).toInstant()));
 						}
 						if (forceTime) {
 							LocalTime lt = ldt.toLocalTime();
@@ -1506,23 +1663,27 @@ public class Mapper {
 							String formatted = ldt.atZone(ZoneOffset.UTC).format(outputFormatter);
 							return new DateTimeType(formatted);
 						}
-						return new DateTimeType(Date.from(ldt.atZone(ZoneOffset.UTC).toInstant()));
+						return new DateTimeType(
+								Date.from(ldt.atZone(ZoneOffset.UTC).toInstant()));
 
 					} catch (Exception e1) {
 						try {
 							LocalDate ld = LocalDate.parse(dateSource, inputFormatter);
 
 							if (forceInstant) {
-								return new InstantType(Date.from(ld.atStartOfDay(ZoneOffset.UTC).toInstant()));
+								return new InstantType(Date.from(
+										ld.atStartOfDay(ZoneOffset.UTC).toInstant()));
 							}
 							if (forceTime) {
 								return new TimeType("00:00:00");
 							}
 							if (outputFormatter != null) {
-								String formatted = ld.atStartOfDay(ZoneOffset.UTC).format(outputFormatter);
+								String formatted =
+										ld.atStartOfDay(ZoneOffset.UTC).format(outputFormatter);
 								return new DateTimeType(formatted);
 							}
-							return new DateType(Date.from(ld.atStartOfDay(ZoneOffset.UTC).toInstant()));
+							return new DateType(
+									Date.from(ld.atStartOfDay(ZoneOffset.UTC).toInstant()));
 
 						} catch (Exception e2) {
 							try {
@@ -1530,7 +1691,8 @@ public class Mapper {
 
 								if (forceInstant) {
 									LocalDateTime ldt = lt.atDate(LocalDate.now());
-									return new InstantType(Date.from(ldt.atZone(ZoneOffset.UTC).toInstant()));
+									return new InstantType(
+											Date.from(ldt.atZone(ZoneOffset.UTC).toInstant()));
 								}
 								if (forceTime || outputFormatter == null) {
 									return new TimeType(lt.format(DateTimeFormatter.ISO_LOCAL_TIME));
@@ -1540,21 +1702,30 @@ public class Mapper {
 
 							} catch (Exception e3) {
 								throw new IllegalArgumentException(
-									String.format("Could not parse date/time '%s' with input format '%s'",
-										dateSource, inputFormat),
-									e3
-								);
+										String.format(
+												"Could not parse date/time '%s' with input format '%s'",
+												dateSource, inputFormat),
+										e3);
 							}
 						}
 					}
 				case ESCAPE:
-					throw new UnsupportedOperationException(String.format("Rule \"%s\": Transform %s not supported yet", context.getRule().getName(), context.getTarget().getTransform().toCode()));
+					throw new UnsupportedOperationException(String.format(
+							"Rule \"%s\": Transform %s not supported yet",
+							context.getRule().getName(),
+							context.getTarget().getTransform().toCode()));
 				default:
-					throw new UnsupportedOperationException(String.format("Rule \"%s\": Transform Unknown: %s", context.getRule().getName(), context.getTarget().getTransform().toCode()));
+					throw new UnsupportedOperationException(String.format(
+							"Rule \"%s\": Transform Unknown: %s",
+							context.getRule().getName(),
+							context.getTarget().getTransform().toCode()));
 			}
 		} catch (Exception e) {
-			throw new FHIRException(String.format("Exception executing transform %s on Rule \"%s\": %s",
-				context.getTarget().toString(), context.getRule().getName(), e.getMessage()), e);
+			throw new FHIRException(
+					String.format(
+							"Exception executing transform %s on Rule \"%s\": %s",
+							context.getTarget().toString(), context.getRule().getName(), e.getMessage()),
+					e);
 		}
 	}
 
@@ -1587,12 +1758,17 @@ public class Mapper {
 		String typeName;
 		// If there is no parameter for the transform
 		if (context.getTarget().getParameter().isEmpty()) {
-			String sourceVariable = context.getRule().getSource().size() == 1 ? context.getRule().getSourceFirstRep().getVariable() : null;
-			String[] types = targetedElement.getTypesForProperty(context.getTarget().getElement().hashCode(), context.getTarget().getElement());
+			String sourceVariable = context.getRule().getSource().size() == 1
+					? context.getRule().getSourceFirstRep().getVariable()
+					: null;
+			String[] types = targetedElement.getTypesForProperty(
+					context.getTarget().getElement().hashCode(),
+					context.getTarget().getElement());
 			if (types.length == 1 && !"*".equals(types[0]) && !types[0].equals("Resource")) {
 				typeName = types[0];
 			} else if (sourceVariable != null) {
-				typeName = determineTypeFromSourceType(context, (Base) context.getVariables().get(INPUT, sourceVariable));
+				typeName = determineTypeFromSourceType(
+						context, (Base) context.getVariables().get(INPUT, sourceVariable));
 			} else {
 				throw new Error("Cannot determine type implicitly because there is no single input variable");
 			}
@@ -1600,17 +1776,25 @@ public class Mapper {
 		// Parameters are available for the transform
 		else {
 			// First Parameter needs to be the Type of the created resource/element
-			typeName = getParamStringNoNull(context.getVariables(), context.getTarget().getParameter().get(0), context.getTarget().toString());
+			typeName = getParamStringNoNull(
+					context.getVariables(),
+					context.getTarget().getParameter().get(0),
+					context.getTarget().toString());
 			// Try to resolve if the type is a link to a StructureDefinition (to get base FHIR Type)
-			for (StructureMap.StructureMapStructureComponent structure : context.getStructureMap().getStructure()) {
-				if (structure.getMode() == StructureMap.StructureMapModelMode.TARGET && structure.hasAlias() && typeName.equals(structure.getAlias())) {
+			for (StructureMap.StructureMapStructureComponent structure :
+					context.getStructureMap().getStructure()) {
+				if (structure.getMode() == StructureMap.StructureMapModelMode.TARGET
+						&& structure.hasAlias()
+						&& typeName.equals(structure.getAlias())) {
 					typeName = structure.getUrl();
 					break;
 				}
 			}
 		}
 
-		Base result = services != null ? services.createType(context.getAppInfo(), typeName) : ResourceFactory.createResourceOrType(typeName);
+		Base result = services != null
+				? services.createType(context.getAppInfo(), typeName)
+				: ResourceFactory.createResourceOrType(typeName);
 		if (result.isResource() && !result.fhirType().equals("Parameters")) {
 			if (services != null) {
 				result = services.createResource(context.getAppInfo(), result, root);
@@ -1636,18 +1820,21 @@ public class Mapper {
 
 		StructureMap.StructureMapGroupComponent resolvedGroup = null;
 		StructureMap targetMap = context.getStructureMap();
-		for (StructureMap.StructureMapGroupComponent group : context.getStructureMap().getGroup()) {
+		for (StructureMap.StructureMapGroupComponent group :
+				context.getStructureMap().getGroup()) {
 			if (matchesByType(context.getStructureMap(), group, type)) {
 				if (resolvedGroup == null) {
 					resolvedGroup = group;
 				} else {
-					throw new InvalidRequestException(String.format("Multiple possible matches looking for default rule for '%s' in %s",
-						type, context.getStructureMap().getUrl()));
+					throw new InvalidRequestException(String.format(
+							"Multiple possible matches looking for default rule for '%s' in %s",
+							type, context.getStructureMap().getUrl()));
 				}
 			}
 		}
 		if (resolvedGroup != null) {
-			String result = getActualType(context.getStructureMap(), resolvedGroup.getInput().get(1).getType());
+			String result = getActualType(
+					context.getStructureMap(), resolvedGroup.getInput().get(1).getType());
 			context.getGroup().setUserData(userType, result);
 			return result;
 		}
@@ -1655,7 +1842,8 @@ public class Mapper {
 		for (UriType importedMaps : context.getStructureMap().getImport()) {
 			List<StructureMap> importedMapList = findMatchingMaps(importedMaps.getValue());
 			if (importedMapList.isEmpty()) {
-				throw new FHIRException(String.format("Unable to find map(s) for import : %s", importedMaps.getValue()));
+				throw new FHIRException(
+						String.format("Unable to find map(s) for import : %s", importedMaps.getValue()));
 			}
 			for (StructureMap importedMap : importedMapList) {
 				if (!importedMap.getUrl().equals(context.getStructureMap().getUrl())) {
@@ -1665,9 +1853,13 @@ public class Mapper {
 
 								resolvedGroup = group;
 							} else {
-								throw new FHIRException(String.format("Multiple possible matches for default rule for '%s' in %s (%s) and %s (%s)",
-									type, targetMap.getUrl(), resolvedGroup.getName(), importedMap.getUrl(), group.getName()));
-
+								throw new FHIRException(String.format(
+										"Multiple possible matches for default rule for '%s' in %s (%s) and %s (%s)",
+										type,
+										targetMap.getUrl(),
+										resolvedGroup.getName(),
+										importedMap.getUrl(),
+										group.getName()));
 							}
 						}
 					}
@@ -1675,7 +1867,9 @@ public class Mapper {
 			}
 		}
 		if (resolvedGroup == null) {
-			throw new FHIRException(String.format("No matches found for default rule for '%s' from %s", type, context.getStructureMap().getUrl()));
+			throw new FHIRException(String.format(
+					"No matches found for default rule for '%s' from %s",
+					type, context.getStructureMap().getUrl()));
 		}
 		String result = getActualType(targetMap, resolvedGroup.getInput().get(1).getType());
 		context.getGroup().setUserData(userType, result);
@@ -1694,8 +1888,8 @@ public class Mapper {
 		if (group.getTypeMode() != StructureMap.StructureMapGroupTypeMode.TYPEANDTYPES) {
 			return false;
 		} else if (group.getInput().size() != 2
-			|| group.getInput().get(0).getMode() != StructureMap.StructureMapInputMode.SOURCE
-			|| group.getInput().get(1).getMode() != StructureMap.StructureMapInputMode.TARGET) {
+				|| group.getInput().get(0).getMode() != StructureMap.StructureMapInputMode.SOURCE
+				|| group.getInput().get(1).getMode() != StructureMap.StructureMapInputMode.TARGET) {
 			return false;
 		} else {
 			return matchesType(map, type, group.getInput().get(0).getType());
@@ -1711,15 +1905,20 @@ public class Mapper {
 	 * @param targetType the target type.
 	 * @return true if matches.
 	 */
-	private boolean matchesByType(StructureMap map, StructureMap.StructureMapGroupComponent group, String sourceType, String targetType) {
+	private boolean matchesByType(
+			StructureMap map, StructureMap.StructureMapGroupComponent group, String sourceType, String targetType) {
 		if (group.getTypeMode() == StructureMap.StructureMapGroupTypeMode.NONE) {
 			return false;
-		} else if (group.getInput().size() != 2 || group.getInput().get(0).getMode() != StructureMap.StructureMapInputMode.SOURCE || group.getInput().get(1).getMode() != StructureMap.StructureMapInputMode.TARGET) {
+		} else if (group.getInput().size() != 2
+				|| group.getInput().get(0).getMode() != StructureMap.StructureMapInputMode.SOURCE
+				|| group.getInput().get(1).getMode() != StructureMap.StructureMapInputMode.TARGET) {
 			return false;
-		} else if (!group.getInput().get(0).hasType() || !group.getInput().get(1).hasType()) {
+		} else if (!group.getInput().get(0).hasType()
+				|| !group.getInput().get(1).hasType()) {
 			return false;
 		} else {
-			return matchesType(map, sourceType, group.getInput().get(0).getType()) && matchesType(map, targetType, group.getInput().get(1).getType());
+			return matchesType(map, sourceType, group.getInput().get(0).getType())
+					&& matchesType(map, targetType, group.getInput().get(1).getType());
 		}
 	}
 
@@ -1731,12 +1930,13 @@ public class Mapper {
 	 * @param statedType the stated type.
 	 * @return true if matched.
 	 */
-	//TODO Check structure from a remote server ?
+	// TODO Check structure from a remote server ?
 	private boolean matchesType(StructureMap map, String actualType, String statedType) {
 		// check the aliases
 		for (StructureMap.StructureMapStructureComponent structure : map.getStructure()) {
 			if (structure.hasAlias() && statedType.equals(structure.getAlias())) {
-				StructureDefinition structureDefinition = worker.fetchResource(StructureDefinition.class, structure.getUrl());
+				StructureDefinition structureDefinition =
+						worker.fetchResource(StructureDefinition.class, structure.getUrl());
 				if (structureDefinition != null) {
 					statedType = structureDefinition.getType();
 				}
@@ -1769,9 +1969,11 @@ public class Mapper {
 		// check the aliases
 		for (StructureMap.StructureMapStructureComponent structure : map.getStructure()) {
 			if (structure.hasAlias() && statedType.equals(structure.getAlias())) {
-				StructureDefinition structureDefinition = worker.fetchResource(StructureDefinition.class, structure.getUrl());
+				StructureDefinition structureDefinition =
+						worker.fetchResource(StructureDefinition.class, structure.getUrl());
 				if (structureDefinition == null) {
-					throw new ResourceNotFoundException(String.format("Unable to resolve structure %s", structure.getUrl()));
+					throw new ResourceNotFoundException(
+							String.format("Unable to resolve structure %s", structure.getUrl()));
 				}
 				return structureDefinition.getType(); // was getId, see if not working ?
 			}
@@ -1815,9 +2017,9 @@ public class Mapper {
 	 * @return true if matches.
 	 */
 	private boolean urlMatches(String mask, String url) {
-		return url.length() > mask.length() &&
-			url.startsWith(mask.substring(0, mask.indexOf("*"))) &&
-			url.endsWith(mask.substring(mask.indexOf("*") + 1));
+		return url.length() > mask.length()
+				&& url.startsWith(mask.substring(0, mask.indexOf("*")))
+				&& url.endsWith(mask.substring(mask.indexOf("*") + 1));
 	}
 
 	/**
@@ -1828,9 +2030,8 @@ public class Mapper {
 	 * @param message   the context message.
 	 * @return the String value.
 	 */
-	private String getParamStringNoNull(Variables variables,
-													StructureMap.StructureMapGroupRuleTargetParameterComponent parameter,
-													String message) {
+	private String getParamStringNoNull(
+			Variables variables, StructureMap.StructureMapGroupRuleTargetParameterComponent parameter, String message) {
 		Base parameterValue = getParameterValue(variables, parameter);
 		if (parameterValue == null) {
 			throw new FHIRException(String.format("Unable to find a value for %s. Context: %s", parameter, message));
@@ -1841,8 +2042,9 @@ public class Mapper {
 		}
 
 		if (!parameterValue.hasPrimitiveValue()) {
-			throw new FHIRException(String.format("Found a value for %s, but it has a type of %s and cannot be treated as a string. Context: %s",
-				parameter, parameterValue.fhirType(), message));
+			throw new FHIRException(String.format(
+					"Found a value for %s, but it has a type of %s and cannot be treated as a string. Context: %s",
+					parameter, parameterValue.fhirType(), message));
 		}
 		return parameterValue.primitiveValue();
 	}
@@ -1854,7 +2056,8 @@ public class Mapper {
 	 * @param parameter the parameter.
 	 * @return the value as a Base FHIR element.
 	 */
-	private Base getParameterValue(Variables vars, StructureMap.StructureMapGroupRuleTargetParameterComponent parameter) {
+	private Base getParameterValue(
+			Variables vars, StructureMap.StructureMapGroupRuleTargetParameterComponent parameter) {
 		Type type = parameter.getValue();
 		if (!(type instanceof IdType)) {
 			return type;
@@ -1880,19 +2083,28 @@ public class Mapper {
 	private Base evaluateTransform(MappingContext context) {
 		ExpressionNode expression = (ExpressionNode) context.getTarget().getUserData(MAP_EXPRESSION);
 		if (expression == null) {
-			expression = fhirPathEngine.parse(getParamStringNoNull(context.getVariables(), context.getTarget().getParameter().get(1), context.getTarget().toString()));
+			expression = fhirPathEngine.parse(getParamStringNoNull(
+					context.getVariables(),
+					context.getTarget().getParameter().get(1),
+					context.getTarget().toString()));
 			context.getTarget().setUserData(MAP_EXPRESSION, expression);
 		}
-		List<Base> values = fhirPathEngine.evaluate(context.getVariables(), null, null,
-			context.getTarget().getParameter().size() == 2 ?
-				getParameterValue(context.getVariables(), context.getTarget().getParameter().get(0)) :
-				new BooleanType(false),
-			expression);
+		List<Base> values = fhirPathEngine.evaluate(
+				context.getVariables(),
+				null,
+				null,
+				context.getTarget().getParameter().size() == 2
+						? getParameterValue(
+								context.getVariables(),
+								context.getTarget().getParameter().get(0))
+						: new BooleanType(false),
+				expression);
 		if (values.isEmpty()) {
 			return null;
 		} else if (values.size() != 1) {
-			throw new FHIRException(String.format("Rule \"%s\": Evaluation of %s returned %s objects",
-				context.getRule().getName(), expression.toString(), values.size()));
+			throw new FHIRException(String.format(
+					"Rule \"%s\": Evaluation of %s returned %s objects",
+					context.getRule().getName(), expression.toString(), values.size()));
 		} else {
 			return values.get(0);
 		}
@@ -1906,42 +2118,46 @@ public class Mapper {
 	 * @return the Coding element.
 	 */
 	private Coding buildCoding(String uri, String code, String display) {
-//        String system = null;
-//        String display = null;
-//        ValueSet valueSet = Utilities.noString(uri) ? null : worker.fetchResourceWithException(ValueSet.class, uri);
-//        if (valueSet != null) {
-//            ValueSetExpander.ValueSetExpansionOutcome expended = worker.expandVS(valueSet, true, false);
-//            if (expended.getError() != null) {
-//                throw new FHIRException(expended.getError());
-//            }
-//            CommaSeparatedStringBuilder codes = new CommaSeparatedStringBuilder();
-//            for (ValueSet.ValueSetExpansionContainsComponent expend : expended.getValueset().getExpansion().getContains()) {
-//                if (expend.hasCode()) {
-//                    codes.append(expend.getCode());
-//                }
-//                if (code.equals(expend.getCode()) && expend.hasSystem()) {
-//                    system = expend.getSystem();
-//                    display = expend.getDisplay();
-//                    break;
-//                }
-//                if (code.equalsIgnoreCase(expend.getDisplay()) && expend.hasSystem()) {
-//                    system = expend.getSystem();
-//                    display = expend.getDisplay();
-//                    break;
-//                }
-//            }
-//            if (system == null) {
-//                throw new FHIRException(String.format("The code '%s' is not in the value set '%s' (valid codes: %s; also checked displays)",
-//                        code, uri, codes));
-//            }
-//        } else {
-//            system = uri;
-//        }
-//        IWorkerContext.ValidationResult validationResult = worker.validateCode(terminologyServiceOptions, system, code, null);
-//        if (validationResult != null && validationResult.getDisplay() != null) {
-//            display = validationResult.getDisplay();
-//        }
-//        return new Coding().setSystem(uri).setCode(code).setDisplay(display);
+		//        String system = null;
+		//        String display = null;
+		//        ValueSet valueSet = Utilities.noString(uri) ? null : worker.fetchResourceWithException(ValueSet.class,
+		// uri);
+		//        if (valueSet != null) {
+		//            ValueSetExpander.ValueSetExpansionOutcome expended = worker.expandVS(valueSet, true, false);
+		//            if (expended.getError() != null) {
+		//                throw new FHIRException(expended.getError());
+		//            }
+		//            CommaSeparatedStringBuilder codes = new CommaSeparatedStringBuilder();
+		//            for (ValueSet.ValueSetExpansionContainsComponent expend :
+		// expended.getValueset().getExpansion().getContains()) {
+		//                if (expend.hasCode()) {
+		//                    codes.append(expend.getCode());
+		//                }
+		//                if (code.equals(expend.getCode()) && expend.hasSystem()) {
+		//                    system = expend.getSystem();
+		//                    display = expend.getDisplay();
+		//                    break;
+		//                }
+		//                if (code.equalsIgnoreCase(expend.getDisplay()) && expend.hasSystem()) {
+		//                    system = expend.getSystem();
+		//                    display = expend.getDisplay();
+		//                    break;
+		//                }
+		//            }
+		//            if (system == null) {
+		//                throw new FHIRException(String.format("The code '%s' is not in the value set '%s' (valid
+		// codes: %s; also checked displays)",
+		//                        code, uri, codes));
+		//            }
+		//        } else {
+		//            system = uri;
+		//        }
+		//        IWorkerContext.ValidationResult validationResult = worker.validateCode(terminologyServiceOptions,
+		// system, code, null);
+		//        if (validationResult != null && validationResult.getDisplay() != null) {
+		//            display = validationResult.getDisplay();
+		//        }
+		//        return new Coding().setSystem(uri).setCode(code).setDisplay(display);
 		return new Coding().setSystem(uri).setCode(code).setDisplay(display);
 	}
 
@@ -1952,11 +2168,18 @@ public class Mapper {
 	 * @return the translated concept.
 	 */
 	private Base translate(MappingContext context) {
-		Base source = getParameterValue(context.getVariables(), context.getTarget().getParameter().get(0));
-		String conceptMapUrl = getParamStringNoNull(context.getVariables(), context.getTarget().getParameter().get(1), context.getTarget().getParameter().toString());
+		Base source = getParameterValue(
+				context.getVariables(), context.getTarget().getParameter().get(0));
+		String conceptMapUrl = getParamStringNoNull(
+				context.getVariables(),
+				context.getTarget().getParameter().get(1),
+				context.getTarget().getParameter().toString());
 		String field = context.getTarget().getParameter().size() > 2
-			? getParamStringNoNull(context.getVariables(), context.getTarget().getParameter().get(2), context.getTarget().getParameter().toString())
-			: null;
+				? getParamStringNoNull(
+						context.getVariables(),
+						context.getTarget().getParameter().get(2),
+						context.getTarget().getParameter().toString())
+				: null;
 		return translate(context, source, conceptMapUrl, field);
 	}
 
@@ -1998,12 +2221,9 @@ public class Mapper {
 		String su = conceptMapUrl;
 		if (conceptMapUrl.equals("http://hl7.org/fhir/ConceptMap/special-oid2uri")) {
 			String uri = worker.oid2Uri(src.getCode());
-			if (uri == null)
-				uri = "urn:oid:" + src.getCode();
-			if ("uri".equals(fieldToReturn))
-				return new UriType(uri);
-			else
-				throw new FHIRException("Error in return code");
+			if (uri == null) uri = "urn:oid:" + src.getCode();
+			if ("uri".equals(fieldToReturn)) return new UriType(uri);
+			else throw new FHIRException("Error in return code");
 		} else {
 			ConceptMap cmap = null;
 			if (conceptMapUrl.startsWith("#")) {
@@ -2013,8 +2233,7 @@ public class Mapper {
 						su = context.getStructureMap().getUrl() + "#" + conceptMapUrl;
 					}
 				}
-				if (cmap == null)
-					throw new FHIRException("Unable to translate - cannot find map " + conceptMapUrl);
+				if (cmap == null) throw new FHIRException("Unable to translate - cannot find map " + conceptMapUrl);
 			} else {
 				if (conceptMapUrl.contains("#")) {
 					String[] p = conceptMapUrl.split("\\#");
@@ -2049,7 +2268,9 @@ public class Mapper {
 					for (ConceptMap.SourceElementComponent e : g.getElement()) {
 						if (!src.hasSystem() && src.getCode().equals(e.getCode())) {
 							list.add(new SourceElementComponentWrapper(g, e));
-						} else if (src.hasSystem() && src.getSystem().equals(g.getSource()) && src.getCode().equals(e.getCode())) {
+						} else if (src.hasSystem()
+								&& src.getSystem().equals(g.getSource())
+								&& src.getCode().equals(e.getCode())) {
 							list.add(new SourceElementComponentWrapper(g, e));
 						}
 					}
@@ -2059,14 +2280,23 @@ public class Mapper {
 				} else if (list.get(0).comp.getTarget().isEmpty()) {
 					message = "Concept map " + su + " found no translation for " + src.getCode();
 				} else {
-					for (ConceptMap.TargetElementComponent tgt : list.get(0).comp.getTarget()) {
-						if (tgt.getEquivalence() == null || EnumSet.of(Enumerations.ConceptMapEquivalence.EQUAL, Enumerations.ConceptMapEquivalence.RELATEDTO, Enumerations.ConceptMapEquivalence.EQUIVALENT, Enumerations.ConceptMapEquivalence.WIDER).contains(tgt.getEquivalence())) {
+					for (ConceptMap.TargetElementComponent tgt :
+							list.get(0).comp.getTarget()) {
+						if (tgt.getEquivalence() == null
+								|| EnumSet.of(
+												Enumerations.ConceptMapEquivalence.EQUAL,
+												Enumerations.ConceptMapEquivalence.RELATEDTO,
+												Enumerations.ConceptMapEquivalence.EQUIVALENT,
+												Enumerations.ConceptMapEquivalence.WIDER)
+										.contains(tgt.getEquivalence())) {
 							if (done) {
 								message = "Concept map " + su + " found multiple matches for " + src.getCode();
 								done = false;
 							} else {
 								done = true;
-								outcome = new Coding().setCode(tgt.getCode()).setSystem(list.get(0).group.getTarget());
+								outcome = new Coding()
+										.setCode(tgt.getCode())
+										.setSystem(list.get(0).group.getTarget());
 							}
 						} else if (tgt.getEquivalence() == Enumerations.ConceptMapEquivalence.UNMATCHED) {
 							done = true;
@@ -2107,14 +2337,16 @@ public class Mapper {
 		}
 
 		ResolvedGroup resolvedGroup = new ResolvedGroup();
-		for (StructureMap.StructureMapGroupComponent grp : context.getStructureMap().getGroup()) {
+		for (StructureMap.StructureMapGroupComponent grp :
+				context.getStructureMap().getGroup()) {
 			if (matchesByType(context.getStructureMap(), grp, sourceType, targetType)) {
 				if (resolvedGroup.targetMap == null) {
 					resolvedGroup.targetMap = context.getStructureMap();
 					resolvedGroup.target = grp;
 				} else
-					throw new FHIRException(String.format("Multiple possible matches looking for rule for '%s/%s', from rule '%s'",
-						sourceType, targetType, context.getRule().getName()));
+					throw new FHIRException(String.format(
+							"Multiple possible matches looking for rule for '%s/%s', from rule '%s'",
+							sourceType, targetType, context.getRule().getName()));
 			}
 		}
 		if (resolvedGroup.targetMap != null) {
@@ -2135,16 +2367,25 @@ public class Mapper {
 								resolvedGroup.targetMap = impMap;
 								resolvedGroup.target = grp;
 							} else
-								throw new FHIRException(String.format("Multiple possible matches for rule for '%s/%s' in %s and %s, from rule '%s'",
-									sourceType, targetType, resolvedGroup.targetMap.getUrl(), impMap.getUrl(), context.getRule().getName()));
+								throw new FHIRException(String.format(
+										"Multiple possible matches for rule for '%s/%s' in %s and %s, from rule '%s'",
+										sourceType,
+										targetType,
+										resolvedGroup.targetMap.getUrl(),
+										impMap.getUrl(),
+										context.getRule().getName()));
 						}
 					}
 				}
 			}
 		}
 		if (resolvedGroup.target == null) {
-			throw new FHIRException(String.format("No matches found for rule for '%s to %s' from %s, from rule '%s'",
-				sourceType, targetType, context.getStructureMap().getUrl(), context.getRule().getName()));
+			throw new FHIRException(String.format(
+					"No matches found for rule for '%s to %s' from %s, from rule '%s'",
+					sourceType,
+					targetType,
+					context.getStructureMap().getUrl(),
+					context.getRule().getName()));
 		}
 		context.getGroup().setUserData(kn, resolvedGroup);
 		return resolvedGroup;
@@ -2166,14 +2407,14 @@ public class Mapper {
 		ResolvedGroup resolvedGroup = new ResolvedGroup();
 		resolvedGroup.targetMap = null;
 		resolvedGroup.target = null;
-		for (StructureMap.StructureMapGroupComponent group : context.getStructureMap().getGroup()) {
+		for (StructureMap.StructureMapGroupComponent group :
+				context.getStructureMap().getGroup()) {
 			if (group.getName().equals(name)) {
 				if (resolvedGroup.targetMap == null) {
 					resolvedGroup.targetMap = context.getStructureMap();
 					resolvedGroup.target = group;
 				} else {
-					throw new FHIRException(String.format("Multiple possible matches for group '%s'",
-						name));
+					throw new FHIRException(String.format("Multiple possible matches for group '%s'", name));
 				}
 			}
 		}
@@ -2195,8 +2436,13 @@ public class Mapper {
 								resolvedGroup.targetMap = impMap;
 								resolvedGroup.target = group;
 							} else {
-								throw new FHIRException(String.format("Multiple possible matches for rule group '%s' in %s#%s and %s#%s",
-									name, resolvedGroup.targetMap.getUrl(), resolvedGroup.target.getName(), impMap.getUrl(), group.getName()));
+								throw new FHIRException(String.format(
+										"Multiple possible matches for rule group '%s' in %s#%s and %s#%s",
+										name,
+										resolvedGroup.targetMap.getUrl(),
+										resolvedGroup.target.getName(),
+										impMap.getUrl(),
+										group.getName()));
 							}
 						}
 					}
@@ -2204,8 +2450,9 @@ public class Mapper {
 			}
 		}
 		if (resolvedGroup.target == null) {
-			throw new FHIRException(String.format("No matches found for rule '%s'. Reference found in %s",
-				name, context.getStructureMap().getUrl()));
+			throw new FHIRException(String.format(
+					"No matches found for rule '%s'. Reference found in %s",
+					name, context.getStructureMap().getUrl()));
 		}
 		context.getGroup().setUserData(kn, resolvedGroup);
 		return resolvedGroup;
@@ -2217,16 +2464,21 @@ public class Mapper {
 	 * @param context   the Mapping Context.
 	 * @param dependent the dependent.
 	 */
-	private void executeDependency(MappingContext context, StructureMap.StructureMapGroupRuleDependentComponent dependent) {
+	private void executeDependency(
+			MappingContext context, StructureMap.StructureMapGroupRuleDependentComponent dependent) {
 		ResolvedGroup resolvedGroup = resolveGroupReference(context, dependent.getName());
 
 		if (resolvedGroup.target.getInput().size() != dependent.getVariable().size()) {
-			throw new FHIRException(String.format("Rule '%s' has %s but the invocation has %s variables",
-				dependent.getName(), resolvedGroup.target.getInput().size(), dependent.getVariable().size()));
+			throw new FHIRException(String.format(
+					"Rule '%s' has %s but the invocation has %s variables",
+					dependent.getName(),
+					resolvedGroup.target.getInput().size(),
+					dependent.getVariable().size()));
 		}
 		Variables variables = new Variables();
 		for (int i = 0; i < resolvedGroup.target.getInput().size(); i++) {
-			StructureMap.StructureMapGroupInputComponent input = resolvedGroup.target.getInput().get(i);
+			StructureMap.StructureMapGroupInputComponent input =
+					resolvedGroup.target.getInput().get(i);
 			StringType rdp = dependent.getVariable().get(i);
 			String var = rdp.asStringValue();
 			Variable.VariableMode mode = input.getMode() == StructureMap.StructureMapInputMode.SOURCE ? INPUT : OUTPUT;
@@ -2235,8 +2487,9 @@ public class Mapper {
 				vv = (Base) context.getVariables().get(OUTPUT, var);
 			}
 			if (vv == null) {
-				throw new FHIRException(String.format("Rule '%s' %s variable '%s' named as '%s' has no value",
-					dependent.getName(), mode, input.getName(), var));
+				throw new FHIRException(String.format(
+						"Rule '%s' %s variable '%s' named as '%s' has no value",
+						dependent.getName(), mode, input.getName(), var));
 			}
 			variables.add(mode, input.getName(), vv);
 		}
@@ -2258,7 +2511,7 @@ public class Mapper {
 
 		for (int i = 0; i < splitElementPath.length; i++) {
 			String elementPath = splitElementPath[i];
-			//Remove indexes as it is not handeled yet !
+			// Remove indexes as it is not handeled yet !
 			if (elementPath.contains("[") && i < (splitElementPath.length - 1)) {
 				String index = elementPath.substring(elementPath.indexOf('[') + 1, elementPath.indexOf(']'));
 				elementPath = elementPath.substring(0, elementPath.indexOf('['));
@@ -2268,7 +2521,9 @@ public class Mapper {
 				} else if ("=".equals(index)) {
 					Base[] elements = element.getProperty(elementPath.hashCode(), elementPath, true);
 					if (elements.length == 0) {
-						throw new InvalidRequestException(String.format("Element index does not exist ! \"%s\" in \"%s\"", elementPath, context.getTarget().getElement()));
+						throw new InvalidRequestException(String.format(
+								"Element index does not exist ! \"%s\" in \"%s\"",
+								elementPath, context.getTarget().getElement()));
 					}
 					element = elements[elements.length - 1];
 				} else {
@@ -2276,19 +2531,24 @@ public class Mapper {
 						int parsedIndex = Integer.parseInt(index);
 						Base[] elements = element.getProperty(elementPath.hashCode(), elementPath, true);
 						if (elements.length <= parsedIndex && parsedIndex != 0) {
-							throw new InvalidRequestException(String.format("Element index does not exist ! \"%s\" in \"%s\"", elementPath, context.getTarget().getElement()));
+							throw new InvalidRequestException(String.format(
+									"Element index does not exist ! \"%s\" in \"%s\"",
+									elementPath, context.getTarget().getElement()));
 						} else if (elements.length > parsedIndex) {
 							element = elements[parsedIndex];
 						} else {
 							element = element.makeProperty(elementPath.hashCode(), elementPath);
 						}
 					} catch (NumberFormatException e) {
-						throw new InvalidRequestException(String.format("Element index shall be an integer or \"+\" or \"=\" ! \"%s\" in \"%s\"",
-							elementPath, context.getTarget().getElement()));
+						throw new InvalidRequestException(String.format(
+								"Element index shall be an integer or \"+\" or \"=\" ! \"%s\" in \"%s\"",
+								elementPath, context.getTarget().getElement()));
 					}
 				}
 			} else if (elementPath.contains("[")) {
-				throw new InvalidRequestException(String.format("Element cannot end with index ! in \"%s\"", context.getTarget().getElement()));
+				throw new InvalidRequestException(String.format(
+						"Element cannot end with index ! in \"%s\"",
+						context.getTarget().getElement()));
 			} else {
 				if (i < (splitElementPath.length - 1)) {
 					Base[] propertyArray = element.getProperty(elementPath.hashCode(), elementPath, true);
@@ -2298,8 +2558,11 @@ public class Mapper {
 						element = element.makeProperty(elementPath.hashCode(), elementPath);
 					}
 				} else {
-					if (element instanceof org.hl7.fhir.r4.model.Narrative && "div".equals(elementPath) && property instanceof org.hl7.fhir.r4.model.StringType) {
-						((org.hl7.fhir.r4.model.Narrative) element).setDivAsString(((org.hl7.fhir.r4.model.StringType) property).getValue());
+					if (element instanceof org.hl7.fhir.r4.model.Narrative
+							&& "div".equals(elementPath)
+							&& property instanceof org.hl7.fhir.r4.model.StringType) {
+						((org.hl7.fhir.r4.model.Narrative) element)
+								.setDivAsString(((org.hl7.fhir.r4.model.StringType) property).getValue());
 					} else {
 						element = element.setProperty(elementPath.hashCode(), elementPath, property);
 					}
@@ -2314,7 +2577,8 @@ public class Mapper {
 		private final ConceptMap.ConceptMapGroupComponent group;
 		private final ConceptMap.SourceElementComponent comp;
 
-		public SourceElementComponentWrapper(ConceptMap.ConceptMapGroupComponent group, ConceptMap.SourceElementComponent comp) {
+		public SourceElementComponentWrapper(
+				ConceptMap.ConceptMapGroupComponent group, ConceptMap.SourceElementComponent comp) {
 			this.group = group;
 			this.comp = comp;
 		}
@@ -2366,17 +2630,17 @@ public class Mapper {
 		if (clientStructureMap != null) {
 			try {
 				structureMap = clientStructureMap
-					.search()
-					.forResource(StructureMap.class)
-					.where(StructureMap.URL.matches().value(url))
-					.returnBundle(org.hl7.fhir.r4.model.Bundle.class)
-					.execute()
-					.getEntry()
-					.stream()
-					.filter(e -> e.getResource() instanceof StructureMap)
-					.map(e -> (StructureMap) e.getResource())
-					.findFirst()
-					.orElse(null);
+						.search()
+						.forResource(StructureMap.class)
+						.where(StructureMap.URL.matches().value(url))
+						.returnBundle(org.hl7.fhir.r4.model.Bundle.class)
+						.execute()
+						.getEntry()
+						.stream()
+						.filter(e -> e.getResource() instanceof StructureMap)
+						.map(e -> (StructureMap) e.getResource())
+						.findFirst()
+						.orElse(null);
 
 				if (structureMap != null) {
 					logger.info("Fetched StructureMap from remote endpoint: " + url);
@@ -2417,9 +2681,8 @@ public class Mapper {
 
 		for (StructureMap.StructureMapGroupComponent importedGroup : imported.getGroup()) {
 			Optional<StructureMap.StructureMapGroupComponent> existingGroupOpt = base.getGroup().stream()
-				.filter(g -> g.getName().equals(importedGroup.getName())
-					&& sameGroupSignature(g, importedGroup))
-				.findFirst();
+					.filter(g -> g.getName().equals(importedGroup.getName()) && sameGroupSignature(g, importedGroup))
+					.findFirst();
 
 			if (existingGroupOpt.isPresent()) {
 				mergeGroups(existingGroupOpt.get(), importedGroup);
@@ -2440,7 +2703,8 @@ public class Mapper {
 		if (!g1.getName().equals(g2.getName())) return false;
 		if (g1.getInput().size() != g2.getInput().size()) return false;
 		for (int i = 0; i < g1.getInput().size(); i++) {
-			if (!Objects.equals(g1.getInput().get(i).getType(), g2.getInput().get(i).getType())) return false;
+			if (!Objects.equals(
+					g1.getInput().get(i).getType(), g2.getInput().get(i).getType())) return false;
 		}
 		return true;
 	}
@@ -2450,11 +2714,12 @@ public class Mapper {
 	 * Local rules override imported rules with the same name.
 	 * Keeps the order (imported first, local after).
 	 */
-	private void mergeGroups(StructureMap.StructureMapGroupComponent baseGroup, StructureMap.StructureMapGroupComponent importedGroup) {
+	private void mergeGroups(
+			StructureMap.StructureMapGroupComponent baseGroup, StructureMap.StructureMapGroupComponent importedGroup) {
 		for (StructureMap.StructureMapGroupRuleComponent importedRule : importedGroup.getRule()) {
 			Optional<StructureMap.StructureMapGroupRuleComponent> existingRuleOpt = baseGroup.getRule().stream()
-				.filter(r -> r.getName().equals(importedRule.getName()))
-				.findFirst();
+					.filter(r -> r.getName().equals(importedRule.getName()))
+					.findFirst();
 
 			if (existingRuleOpt.isPresent()) {
 				StructureMap.StructureMapGroupRuleComponent existingRule = existingRuleOpt.get();
@@ -2469,19 +2734,27 @@ public class Mapper {
 	 * Merges two rules recursively.
 	 * Local rule has priority; imported subrules are added if not overridden.
 	 */
-	void mergeRules(StructureMap.StructureMapGroupRuleComponent baseRule, StructureMap.StructureMapGroupRuleComponent importedRule) {
+	void mergeRules(
+			StructureMap.StructureMapGroupRuleComponent baseRule,
+			StructureMap.StructureMapGroupRuleComponent importedRule) {
 
 		if (baseRule.getSource().isEmpty() && !importedRule.getSource().isEmpty()) {
-			baseRule.getSource().addAll(importedRule.getSource().stream().map(StructureMap.StructureMapGroupRuleSourceComponent::copy).toList());
+			baseRule.getSource()
+					.addAll(importedRule.getSource().stream()
+							.map(StructureMap.StructureMapGroupRuleSourceComponent::copy)
+							.toList());
 		}
 		if (baseRule.getTarget().isEmpty() && !importedRule.getTarget().isEmpty()) {
-			baseRule.getTarget().addAll(importedRule.getTarget().stream().map(StructureMap.StructureMapGroupRuleTargetComponent::copy).toList());
+			baseRule.getTarget()
+					.addAll(importedRule.getTarget().stream()
+							.map(StructureMap.StructureMapGroupRuleTargetComponent::copy)
+							.toList());
 		}
 
 		for (StructureMap.StructureMapGroupRuleComponent importedSubRule : importedRule.getRule()) {
 			Optional<StructureMap.StructureMapGroupRuleComponent> existingSubRuleOpt = baseRule.getRule().stream()
-				.filter(r -> r.getName().equals(importedSubRule.getName()))
-				.findFirst();
+					.filter(r -> r.getName().equals(importedSubRule.getName()))
+					.findFirst();
 
 			if (existingSubRuleOpt.isPresent()) {
 				mergeRules(existingSubRuleOpt.get(), importedSubRule);
@@ -2492,7 +2765,7 @@ public class Mapper {
 
 		for (StructureMap.StructureMapGroupRuleDependentComponent importedDependent : importedRule.getDependent()) {
 			boolean exists = baseRule.getDependent().stream()
-				.anyMatch(dep -> dep.getName().equals(importedDependent.getName()));
+					.anyMatch(dep -> dep.getName().equals(importedDependent.getName()));
 			if (!exists) {
 				baseRule.getDependent().add(importedDependent.copy());
 			}
@@ -2513,11 +2786,11 @@ public class Mapper {
 
 		for (Resource importedResource : importedContained) {
 			boolean alreadyExists = baseContained.stream()
-				.anyMatch(existing ->
-					existing.getIdElement() != null &&
-						importedResource.getIdElement() != null &&
-						existing.getIdElement().getIdPart().equals(importedResource.getIdElement().getIdPart())
-				);
+					.anyMatch(existing -> existing.getIdElement() != null
+							&& importedResource.getIdElement() != null
+							&& existing.getIdElement()
+									.getIdPart()
+									.equals(importedResource.getIdElement().getIdPart()));
 
 			if (!alreadyExists) {
 				baseContained.add(importedResource.copy());

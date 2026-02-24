@@ -35,7 +35,7 @@ public class TransformerService implements StructureMapUtilities.ITransformerSer
 
 	@Override
 	public Base createResource(Object o, Base base, boolean b) {
-		//No actual creation here
+		// No actual creation here
 		return base;
 	}
 
@@ -69,11 +69,11 @@ public class TransformerService implements StructureMapUtilities.ITransformerSer
 
 		try {
 			outParams = terminologyClient
-				.operation()
-				.onType(ConceptMap.class)
-				.named("$translate")
-				.withParameters(inParams)
-				.execute();
+					.operation()
+					.onType(ConceptMap.class)
+					.named("$translate")
+					.withParameters(inParams)
+					.execute();
 		} catch (FhirClientConnectionException e) {
 			throw new FHIRException("Error calling terminology server", e);
 		}
@@ -101,7 +101,7 @@ public class TransformerService implements StructureMapUtilities.ITransformerSer
 
 	@Override
 	public List<Base> performSearch(Object o, String s) throws FHIRException {
-		//No real research implementation for now
+		// No real research implementation for now
 		return List.of();
 	}
 }
