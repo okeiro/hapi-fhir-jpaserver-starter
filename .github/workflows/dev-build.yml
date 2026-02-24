@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+  workflow_dispatch:
 
 env:
   GCP_PROJECT_ID: dev-okeiro-454409
