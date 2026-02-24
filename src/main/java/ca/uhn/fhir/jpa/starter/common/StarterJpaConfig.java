@@ -50,9 +50,9 @@ import ca.uhn.fhir.jpa.starter.annotations.OnCorsPresent;
 import ca.uhn.fhir.jpa.starter.annotations.OnImplementationGuidesPresent;
 import ca.uhn.fhir.jpa.starter.common.validation.IRepositoryValidationInterceptorFactory;
 import ca.uhn.fhir.jpa.starter.elastic.ElasticsearchBootSvcImpl;
+import ca.uhn.fhir.jpa.starter.errorreport.ErrorReportingExceptionInterceptor;
 import ca.uhn.fhir.jpa.starter.ig.ExtendedPackageInstallationSpec;
 import ca.uhn.fhir.jpa.starter.ig.IImplementationGuideOperationProvider;
-import ca.uhn.fhir.jpa.starter.errorreport.ErrorReportingExceptionInterceptor;
 import ca.uhn.fhir.jpa.subscription.util.SubscriptionDebugLogInterceptor;
 import ca.uhn.fhir.jpa.util.ResourceCountCache;
 import ca.uhn.fhir.mdm.provider.MdmProviderLoader;
@@ -457,7 +457,7 @@ public class StarterJpaConfig {
 			fhirServer.registerProvider(binaryAccessProvider.get());
 		}
 
-      errorReportingExceptionInterceptor.ifPresent(fhirServer::registerInterceptor);
+		errorReportingExceptionInterceptor.ifPresent(fhirServer::registerInterceptor);
 
 		// Validation
 
