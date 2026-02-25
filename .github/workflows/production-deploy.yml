@@ -1,0 +1,106 @@
+name: Deploy to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to deploy (e.g., 2.3.0)'
+        required: true
+
+env:
+  IMAGE_NAME: hapi-fhir-server
+  STAGING_PROJECT_ID: s3ns-staging-okeiro
+  STAGING_REGISTRY: europe-west9-docker.pkg.dev
+  STAGING_REGISTRY_NAME: preproduction-okeiro
+  PROD_PROJECT_ID: s3ns-production-okeiro
+  PROD_REGISTRY: europe-west9-docker.pkg.dev
+  PROD_REGISTRY_NAME: production
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate git tag exists
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          TAG="v${VERSION}"
+
+          echo "Checking for tag: $TAG"
+
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG exists"
+          elif git rev-parse "$VERSION" >/dev/null 2>&1; then
+            echo "Tag $VERSION exists (without v prefix)"
+          else
+            echo "ERROR: Neither tag $TAG nor $VERSION found!"
+            echo "Available tags:"
+            git tag -l | tail -10
+            exit 1
+          fi
+
+  retag-push:
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/gcp-setup
+        with:
+          service-account-email: ${{ vars.GCP_SA_EMAIL }}
+          workload-identity-provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          artifact-registry-endpoint: ${{ env.PROD_REGISTRY }}
+
+      - name: Authenticate to staging registry
+        run: gcloud auth configure-docker ${{ env.STAGING_REGISTRY }} --quiet
+
+      - name: Retag image from staging to production
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          STAGING_IMAGE="${{ env.STAGING_REGISTRY }}/${{ env.STAGING_PROJECT_ID }}/${{ env.STAGING_REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${VERSION}"
+          PROD_IMAGE_BASE="${{ env.PROD_REGISTRY }}/${{ env.PROD_PROJECT_ID }}/${{ env.PROD_REGISTRY_NAME }}/${{ env.IMAGE_NAME }}"
+
+          echo "Pulling staging image: $STAGING_IMAGE"
+          docker pull "$STAGING_IMAGE"
+
+          echo "Tagging for production:"
+          docker tag "$STAGING_IMAGE" "${PROD_IMAGE_BASE}:${VERSION}"
+          docker tag "$STAGING_IMAGE" "${PROD_IMAGE_BASE}:latest"
+
+          echo "Pushing to production registry:"
+          docker push "${PROD_IMAGE_BASE}:${VERSION}"
+          docker push "${PROD_IMAGE_BASE}:latest"
+
+          echo "Successfully retagged ${IMAGE_NAME}:${VERSION} to production"
+
+  cve-scan:
+    needs: retag-push
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SA_EMAIL }}
+
+      - run: gcloud auth configure-docker ${{ env.PROD_REGISTRY }} --quiet
+
+      - run: docker pull ${{ env.PROD_REGISTRY }}/${{ env.PROD_PROJECT_ID }}/${{ env.PROD_REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.version }}
+
+      - uses: ./.github/actions/trivy-scan
+        with:
+          image: ${{ env.PROD_REGISTRY }}/${{ env.PROD_PROJECT_ID }}/${{ env.PROD_REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.version }}
+          fail-on-critical: 'true'
+          max-high-cves: '5'
+          block: 'true'

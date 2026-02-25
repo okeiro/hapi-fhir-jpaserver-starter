@@ -1,0 +1,115 @@
+name: 'Trivy CVE Scan'
+description: 'Scan container image for vulnerabilities'
+
+inputs:
+  image:
+    description: 'Image reference to scan (local tag or registry/repo:tag)'
+    required: true
+  fail-on-critical:
+    description: 'Fail if any CRITICAL CVEs found'
+    required: false
+    default: 'true'
+  max-high-cves:
+    description: 'Maximum allowed HIGH CVEs before failing (0 = block all)'
+    required: false
+    default: '5'
+  block:
+    description: 'Whether to fail the workflow on threshold breach (true) or just warn (false)'
+    required: false
+    default: 'true'
+
+outputs:
+  critical-count:
+    description: 'Number of CRITICAL vulnerabilities found'
+    value: ${{ steps.count.outputs.critical-count }}
+  high-count:
+    description: 'Number of HIGH vulnerabilities found'
+    value: ${{ steps.count.outputs.high-count }}
+  scan-passed:
+    description: 'Whether the scan passed thresholds (true/false)'
+    value: ${{ steps.evaluate.outputs.passed }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@0.28.0
+      with:
+        image-ref: ${{ inputs.image }}
+        format: 'json'
+        output: 'trivy-results.json'
+        severity: 'CRITICAL,HIGH'
+        ignore-unfixed: true
+
+    - name: Count vulnerabilities
+      id: count
+      shell: bash
+      run: |
+        CRITICAL_COUNT=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' trivy-results.json 2>/dev/null || echo "0")
+        HIGH_COUNT=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' trivy-results.json 2>/dev/null || echo "0")
+
+        echo "critical-count=$CRITICAL_COUNT" >> $GITHUB_OUTPUT
+        echo "high-count=$HIGH_COUNT" >> $GITHUB_OUTPUT
+
+        echo "## Trivy CVE Scan Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Image:** \`${{ inputs.image }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
+        echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+        echo "| CRITICAL | $CRITICAL_COUNT |" >> $GITHUB_STEP_SUMMARY
+        echo "| HIGH | $HIGH_COUNT |" >> $GITHUB_STEP_SUMMARY
+
+        # List CVEs if any found
+        if [ "$CRITICAL_COUNT" -gt 0 ] || [ "$HIGH_COUNT" -gt 0 ]; then
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Vulnerabilities Found" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          jq -r '.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL" or .Severity == "HIGH") | "- **\(.Severity)**: \(.VulnerabilityID) in \(.PkgName) (\(.InstalledVersion))"' trivy-results.json 2>/dev/null | head -20 >> $GITHUB_STEP_SUMMARY || true
+        fi
+
+    - name: Evaluate thresholds
+      id: evaluate
+      shell: bash
+      run: |
+        CRITICAL_COUNT="${{ steps.count.outputs.critical-count }}"
+        HIGH_COUNT="${{ steps.count.outputs.high-count }}"
+        FAIL_ON_CRITICAL="${{ inputs.fail-on-critical }}"
+        MAX_HIGH="${{ inputs.max-high-cves }}"
+        BLOCK="${{ inputs.block }}"
+
+        PASSED="true"
+        REASON=""
+
+        if [ "$FAIL_ON_CRITICAL" = "true" ] && [ "$CRITICAL_COUNT" -gt 0 ]; then
+          PASSED="false"
+          REASON="Found $CRITICAL_COUNT CRITICAL CVE(s)"
+        fi
+
+        if [ "$HIGH_COUNT" -gt "$MAX_HIGH" ]; then
+          PASSED="false"
+          if [ -n "$REASON" ]; then
+            REASON="$REASON and $HIGH_COUNT HIGH CVE(s) (max: $MAX_HIGH)"
+          else
+            REASON="Found $HIGH_COUNT HIGH CVE(s) (max: $MAX_HIGH)"
+          fi
+        fi
+
+        echo "passed=$PASSED" >> $GITHUB_OUTPUT
+
+        if [ "$PASSED" = "false" ]; then
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Scan Result: FAILED" >> $GITHUB_STEP_SUMMARY
+          echo "$REASON" >> $GITHUB_STEP_SUMMARY
+
+          if [ "$BLOCK" = "true" ]; then
+            echo "::error::CVE SCAN FAILED: $REASON"
+            exit 1
+          else
+            echo "::warning::CVE SCAN WARNING: $REASON (non-blocking mode)"
+          fi
+        else
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Scan Result: PASSED" >> $GITHUB_STEP_SUMMARY
+          echo "No blocking vulnerabilities found." >> $GITHUB_STEP_SUMMARY
+        fi
