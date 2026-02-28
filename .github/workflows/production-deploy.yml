@@ -1,14 +1,14 @@
-name: Deploy to Production
+name: Production Deployment
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to deploy (e.g., 2.3.0)'
+        description: 'Version to deploy (e.g., 2.3.0 — must exist in staging registry)'
         required: true
+        type: string
 
 env:
-  IMAGE_NAME: hapi-fhir-server
   STAGING_PROJECT_ID: s3ns-staging-okeiro
   STAGING_REGISTRY: europe-west9-docker.pkg.dev
   STAGING_REGISTRY_NAME: preproduction-okeiro
@@ -18,89 +18,184 @@ env:
 
 permissions:
   id-token: write
-  contents: read
+  contents: write
+  pull-requests: write
 
 jobs:
-  validate:
+  validate-staging-tag:
+    name: Validate Staging Tag
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Validate git tag exists
+      - name: Validate release tag exists
         run: |
           VERSION="${{ github.event.inputs.version }}"
           TAG="v${VERSION}"
 
-          echo "Checking for tag: $TAG"
+          echo "Version: $VERSION"
+          echo "Expected tag: $TAG"
 
           if git rev-parse "$TAG" >/dev/null 2>&1; then
             echo "Tag $TAG exists"
-          elif git rev-parse "$VERSION" >/dev/null 2>&1; then
-            echo "Tag $VERSION exists (without v prefix)"
           else
-            echo "ERROR: Neither tag $TAG nor $VERSION found!"
-            echo "Available tags:"
-            git tag -l | tail -10
+            echo "ERROR: Tag $TAG not found!"
+            echo "Production deployments must promote existing staging releases."
+            echo ""
+            echo "Available release tags:"
+            git tag -l "v*" | tail -10
             exit 1
           fi
 
-  retag-push:
-    needs: validate
+  retag-and-push:
+    name: Retag and Push to Production
+    needs: validate-staging-tag
     runs-on: ubuntu-latest
-    environment: production
+    environment:
+      name: "production"
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - uses: ./.github/actions/gcp-setup
+      - name: Setup GCP (Production)
+        uses: ./.github/actions/gcp-setup
         with:
           service-account-email: ${{ vars.GCP_SA_EMAIL }}
           workload-identity-provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           artifact-registry-endpoint: ${{ env.PROD_REGISTRY }}
 
       - name: Authenticate to staging registry
-        run: gcloud auth configure-docker ${{ env.STAGING_REGISTRY }} --quiet
+        run: |
+          gcloud auth configure-docker ${{ env.STAGING_REGISTRY }} --quiet
 
       - name: Retag image from staging to production
         env:
           VERSION: ${{ github.event.inputs.version }}
         run: |
-          STAGING_IMAGE="${{ env.STAGING_REGISTRY }}/${{ env.STAGING_PROJECT_ID }}/${{ env.STAGING_REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${VERSION}"
-          PROD_IMAGE_BASE="${{ env.PROD_REGISTRY }}/${{ env.PROD_PROJECT_ID }}/${{ env.PROD_REGISTRY_NAME }}/${{ env.IMAGE_NAME }}"
+          IMAGE_NAME="hapi-fhir-jpaserver-starter"
+          STAGING_IMAGE="${{ env.STAGING_REGISTRY }}/${{ env.STAGING_PROJECT_ID }}/${{ env.STAGING_REGISTRY_NAME }}/${IMAGE_NAME}:${VERSION}"
+          PROD_IMAGE_BASE="${{ env.PROD_REGISTRY }}/${{ env.PROD_PROJECT_ID }}/${{ env.PROD_REGISTRY_NAME }}/${IMAGE_NAME}"
 
-          echo "Pulling staging image: $STAGING_IMAGE"
+          echo "Pulling: $STAGING_IMAGE"
           docker pull "$STAGING_IMAGE"
 
-          echo "Tagging for production:"
           docker tag "$STAGING_IMAGE" "${PROD_IMAGE_BASE}:${VERSION}"
           docker tag "$STAGING_IMAGE" "${PROD_IMAGE_BASE}:latest"
 
-          echo "Pushing to production registry:"
           docker push "${PROD_IMAGE_BASE}:${VERSION}"
           docker push "${PROD_IMAGE_BASE}:latest"
 
-          echo "Successfully retagged ${IMAGE_NAME}:${VERSION} to production"
+          echo "Done: ${IMAGE_NAME}:${VERSION}"
 
   cve-scan:
-    needs: retag-push
+    name: CVE Scan Before Production Deploy
+    needs: retag-and-push
     runs-on: ubuntu-latest
-    environment: production
+    environment:
+      name: "production"
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - uses: google-github-actions/auth@v2
+      - name: Setup GCP
+        uses: ./.github/actions/gcp-setup
         with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_SA_EMAIL }}
+          service-account-email: ${{ vars.GCP_SA_EMAIL }}
+          workload-identity-provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          artifact-registry-endpoint: ${{ env.PROD_REGISTRY }}
 
-      - run: gcloud auth configure-docker ${{ env.PROD_REGISTRY }} --quiet
+      - name: Pull image from registry
+        run: |
+          docker pull "${{ env.PROD_REGISTRY }}/${{ env.PROD_PROJECT_ID }}/${{ env.PROD_REGISTRY_NAME }}/hapi-fhir-jpaserver-starter:${{ github.event.inputs.version }}"
 
-      - run: docker pull ${{ env.PROD_REGISTRY }}/${{ env.PROD_PROJECT_ID }}/${{ env.PROD_REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.version }}
-
-      - uses: ./.github/actions/trivy-scan
+      - name: Trivy CVE Scan
+        uses: ./.github/actions/trivy-scan
         with:
-          image: ${{ env.PROD_REGISTRY }}/${{ env.PROD_PROJECT_ID }}/${{ env.PROD_REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.version }}
+          image: "${{ env.PROD_REGISTRY }}/${{ env.PROD_PROJECT_ID }}/${{ env.PROD_REGISTRY_NAME }}/hapi-fhir-jpaserver-starter:${{ github.event.inputs.version }}"
           fail-on-critical: 'true'
           max-high-cves: '5'
           block: 'true'
+
+  create-gitops-pr:
+    name: Create Production GitOps PR
+    needs: retag-and-push
+    runs-on: ubuntu-latest
+    concurrency:
+      group: gitops-production-hapi-fhir
+      cancel-in-progress: false
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.GITOPS_APP_ID }}
+          private-key: ${{ secrets.GITOPS_APP_PRIVATE_KEY }}
+          owner: okeiro
+          repositories: helm-charts
+
+      - name: Checkout GitOps repo
+        uses: actions/checkout@v4
+        with:
+          repository: okeiro/helm-charts
+          ref: main
+          path: gitops-repo
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Install yq
+        run: |
+          if ! command -v yq &> /dev/null; then
+            sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+            sudo chmod +x /usr/local/bin/yq
+          fi
+
+      - name: Update image tags
+        working-directory: gitops-repo
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          SERVICES="mapping-service fhir-simulator-r4 fhir-simulator-r5"
+
+          for SERVICE in $SERVICES; do
+            FILE="production/${SERVICE}/values.yaml"
+            if [[ -f "$FILE" ]]; then
+              OLD_TAG=$(yq eval '.deployment.imageRef.tag' "$FILE")
+              echo "Updating ${FILE}: ${OLD_TAG} -> ${VERSION}"
+              yq eval -i ".deployment.imageRef.tag = \"${VERSION}\"" "$FILE"
+            else
+              echo "Warning: ${FILE} not found, skipping"
+            fi
+          done
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v5
+        with:
+          path: gitops-repo
+          token: ${{ steps.app-token.outputs.token }}
+          commit-message: "ci: update hapi-fhir-jpaserver-starter to ${{ github.event.inputs.version }}"
+          title: "Deploy [production] hapi-fhir-jpaserver-starter ${{ github.event.inputs.version }}"
+          body: |
+            ## Deployment Update
+
+            **Component**: hapi-fhir-jpaserver-starter
+            **Environment**: production
+            **Version**: `${{ github.event.inputs.version }}`
+            **Services**: mapping-service, fhir-simulator-r4, fhir-simulator-r5
+
+            ---
+            **Source**: ${{ github.repository }}@${{ github.sha }}
+            **Triggered by**: @${{ github.actor }}
+          branch: ci/production/hapi-fhir/${{ github.event.inputs.version }}
+          base: main
+          delete-branch: true
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "## Production Deployment Initiated" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Component:** hapi-fhir-jpaserver-starter" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ github.event.inputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Triggered by:** @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY

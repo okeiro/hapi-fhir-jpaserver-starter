@@ -1,0 +1,159 @@
+name: Dev/Sandbox Build & Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  GCP_PROJECT_ID: dev-okeiro-454409
+  GCP_REGION: europe-west8
+  ARTIFACT_REGISTRY: europe-west8-docker.pkg.dev
+  REGISTRY_NAME: monokeiro
+
+permissions:
+  id-token: write
+  contents: write
+  pull-requests: write
+
+jobs:
+  build-push:
+    name: Build and Push to Dev
+    runs-on: ubuntu-latest
+    environment:
+      name: "dev"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup GCP
+        uses: ./.github/actions/gcp-setup
+        with:
+          service-account-email: ${{ vars.GCP_SA_EMAIL }}
+          workload-identity-provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          artifact-registry-endpoint: ${{ env.ARTIFACT_REGISTRY }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: default
+          push: true
+          tags: |
+            ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/hapi-fhir-jpaserver-starter:${{ github.sha }}
+            ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/hapi-fhir-jpaserver-starter:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Summary
+        run: |
+          echo "## Docker Image Built & Pushed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Registry:** \`${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** hapi-fhir-jpaserver-starter" >> $GITHUB_STEP_SUMMARY
+          echo "**Tags:** \`${{ github.sha }}\`, \`latest\`" >> $GITHUB_STEP_SUMMARY
+
+  cve-scan:
+    name: CVE Scan
+    needs: build-push
+    runs-on: ubuntu-latest
+    environment:
+      name: "dev"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SA_EMAIL }}
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.ARTIFACT_REGISTRY }} --quiet
+
+      - name: Pull image
+        run: docker pull ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/hapi-fhir-jpaserver-starter:${{ github.sha }}
+
+      - name: Trivy CVE Scan
+        uses: ./.github/actions/trivy-scan
+        with:
+          image: ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/hapi-fhir-jpaserver-starter:${{ github.sha }}
+          fail-on-critical: 'true'
+          max-high-cves: '5'
+          block: 'false'
+
+  create-sandbox-pr:
+    name: Create Sandbox GitOps PR
+    needs: build-push
+    runs-on: ubuntu-latest
+    concurrency:
+      group: gitops-sandbox-hapi-fhir
+      cancel-in-progress: false
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.GITOPS_APP_ID }}
+          private-key: ${{ secrets.GITOPS_APP_PRIVATE_KEY }}
+          owner: okeiro
+          repositories: helm-charts
+
+      - name: Checkout GitOps repo
+        uses: actions/checkout@v4
+        with:
+          repository: okeiro/helm-charts
+          ref: main
+          path: gitops-repo
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Install yq
+        run: |
+          if ! command -v yq &> /dev/null; then
+            sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+            sudo chmod +x /usr/local/bin/yq
+          fi
+
+      - name: Update image tags
+        working-directory: gitops-repo
+        run: |
+          NEW_TAG="${{ github.sha }}"
+          SERVICES="mapping-service fhir-simulator-r4 fhir-simulator-r5"
+
+          for SERVICE in $SERVICES; do
+            FILE="sandbox/${SERVICE}/values.yaml"
+            if [[ -f "$FILE" ]]; then
+              OLD_TAG=$(yq eval '.deployment.imageRef.tag' "$FILE")
+              echo "Updating ${FILE}: ${OLD_TAG} -> ${NEW_TAG}"
+              yq eval -i ".deployment.imageRef.tag = \"${NEW_TAG}\"" "$FILE"
+            else
+              echo "Warning: ${FILE} not found, skipping"
+            fi
+          done
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v5
+        with:
+          path: gitops-repo
+          token: ${{ steps.app-token.outputs.token }}
+          commit-message: "ci: update hapi-fhir-jpaserver-starter to ${{ github.sha }}"
+          title: "Deploy [sandbox] hapi-fhir-jpaserver-starter"
+          body: |
+            ## Deployment Update
+
+            **Component**: hapi-fhir-jpaserver-starter
+            **Environment**: sandbox
+            **New Tag**: `${{ github.sha }}`
+            **Services**: mapping-service, fhir-simulator-r4, fhir-simulator-r5
+
+            ---
+            **Source**: ${{ github.repository }}@${{ github.sha }}
+            **Triggered by**: @${{ github.actor }}
+          branch: ci/sandbox/hapi-fhir/${{ github.sha }}
+          base: main
+          delete-branch: true

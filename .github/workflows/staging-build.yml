@@ -1,83 +1,195 @@
-name: Build & Push (Staging)
+name: Staging Promote & Deploy
 
 on:
   release:
     types: [published]
 
 env:
-  GCP_PROJECT_ID: s3ns-staging-okeiro
-  GCP_REGION: europe-west9
-  ARTIFACT_REGISTRY: europe-west9-docker.pkg.dev
-  REGISTRY_NAME: preproduction-okeiro
-  IMAGE_NAME: hapi-fhir-server
+  DEV_PROJECT_ID: dev-okeiro-454409
+  DEV_REGISTRY: europe-west8-docker.pkg.dev
+  DEV_REGISTRY_NAME: monokeiro
+  STAGING_PROJECT_ID: s3ns-staging-okeiro
+  STAGING_REGISTRY: europe-west9-docker.pkg.dev
+  STAGING_REGISTRY_NAME: preproduction-okeiro
+  IMAGE_NAME: hapi-fhir-jpaserver-starter
 
 permissions:
   id-token: write
-  contents: read
+  contents: write
+  pull-requests: write
 
 jobs:
   parse-version:
+    name: Parse Release Version
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.parse.outputs.version }}
     steps:
-      - name: Parse version from release tag
+      - name: Extract version from tag
         id: parse
         run: |
           TAG_NAME="${{ github.event.release.tag_name }}"
-          # Strip 'v' prefix if present
+          # Strip leading 'v' if present (e.g., v2.3.0 -> 2.3.0)
           VERSION="${TAG_NAME#v}"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Parsed version: $VERSION"
+          echo "Tag: $TAG_NAME -> Version: $VERSION"
 
-  build-push:
+  retag-and-push:
+    name: Promote Dev Image to Staging
     needs: parse-version
     runs-on: ubuntu-latest
-    environment: staging
+    environment:
+      name: "staging"
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.release.tag_name }}
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - uses: ./.github/actions/gcp-setup
+      - name: Setup GCP (Staging)
+        uses: ./.github/actions/gcp-setup
         with:
           service-account-email: ${{ vars.GCP_SA_EMAIL }}
           workload-identity-provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          artifact-registry-endpoint: ${{ env.ARTIFACT_REGISTRY }}
+          artifact-registry-endpoint: ${{ env.STAGING_REGISTRY }}
 
-      - uses: docker/setup-buildx-action@v3
+      - name: Authenticate to dev registry
+        run: |
+          gcloud auth configure-docker ${{ env.DEV_REGISTRY }} --quiet
 
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-          target: default
-          push: true
-          tags: |
-            ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-            ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${{ needs.parse-version.outputs.version }}
-            ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Pull dev image and push to staging
+        env:
+          VERSION: ${{ needs.parse-version.outputs.version }}
+        run: |
+          DEV_IMAGE="${DEV_REGISTRY}/${DEV_PROJECT_ID}/${DEV_REGISTRY_NAME}/${IMAGE_NAME}:${{ github.sha }}"
+          STAGING_BASE="${STAGING_REGISTRY}/${STAGING_PROJECT_ID}/${STAGING_REGISTRY_NAME}/${IMAGE_NAME}"
+
+          echo "Pulling dev image: $DEV_IMAGE"
+          docker pull "$DEV_IMAGE"
+
+          docker tag "$DEV_IMAGE" "${STAGING_BASE}:${VERSION}"
+          docker tag "$DEV_IMAGE" "${STAGING_BASE}:${{ github.sha }}"
+          docker tag "$DEV_IMAGE" "${STAGING_BASE}:latest"
+
+          docker push "${STAGING_BASE}:${VERSION}"
+          docker push "${STAGING_BASE}:${{ github.sha }}"
+          docker push "${STAGING_BASE}:latest"
+
+          echo "Promoted dev image to staging: ${VERSION}"
+
+      - name: Summary
+        run: |
+          echo "## Docker Image Promoted to Staging" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Source:** \`${{ env.DEV_REGISTRY }}/${{ env.DEV_PROJECT_ID }}/${{ env.DEV_REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Destination:** \`${{ env.STAGING_REGISTRY }}/${{ env.STAGING_PROJECT_ID }}/${{ env.STAGING_REGISTRY_NAME }}/${{ env.IMAGE_NAME }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Tags:** \`${{ needs.parse-version.outputs.version }}\`, \`${{ github.sha }}\`, \`latest\`" >> $GITHUB_STEP_SUMMARY
 
   cve-scan:
-    needs: [parse-version, build-push]
+    name: CVE Scan
+    needs: [parse-version, retag-and-push]
     runs-on: ubuntu-latest
-    environment: staging
+    environment:
+      name: "staging"
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - uses: google-github-actions/auth@v2
+      - name: Setup GCP
+        uses: ./.github/actions/gcp-setup
         with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_SA_EMAIL }}
+          service-account-email: ${{ vars.GCP_SA_EMAIL }}
+          workload-identity-provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          artifact-registry-endpoint: ${{ env.STAGING_REGISTRY }}
 
-      - run: gcloud auth configure-docker ${{ env.ARTIFACT_REGISTRY }} --quiet
+      - name: Pull image from registry
+        run: |
+          docker pull "${{ env.STAGING_REGISTRY }}/${{ env.STAGING_PROJECT_ID }}/${{ env.STAGING_REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${{ needs.parse-version.outputs.version }}"
 
-      - run: docker pull ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${{ needs.parse-version.outputs.version }}
-
-      - uses: ./.github/actions/trivy-scan
+      - name: Trivy CVE Scan
+        uses: ./.github/actions/trivy-scan
         with:
-          image: ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${{ needs.parse-version.outputs.version }}
+          image: "${{ env.STAGING_REGISTRY }}/${{ env.STAGING_PROJECT_ID }}/${{ env.STAGING_REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${{ needs.parse-version.outputs.version }}"
           fail-on-critical: 'true'
           max-high-cves: '5'
           block: 'true'
+
+  create-gitops-pr:
+    name: Create Staging GitOps PR
+    needs: [parse-version, retag-and-push, cve-scan]
+    runs-on: ubuntu-latest
+    concurrency:
+      group: gitops-staging-hapi-fhir
+      cancel-in-progress: false
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.GITOPS_APP_ID }}
+          private-key: ${{ secrets.GITOPS_APP_PRIVATE_KEY }}
+          owner: okeiro
+          repositories: helm-charts
+
+      - name: Checkout GitOps repo
+        uses: actions/checkout@v4
+        with:
+          repository: okeiro/helm-charts
+          ref: main
+          path: gitops-repo
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Install yq
+        run: |
+          if ! command -v yq &> /dev/null; then
+            sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+            sudo chmod +x /usr/local/bin/yq
+          fi
+
+      - name: Update image tags
+        working-directory: gitops-repo
+        env:
+          VERSION: ${{ needs.parse-version.outputs.version }}
+        run: |
+          SERVICES="mapping-service fhir-simulator-r4 fhir-simulator-r5"
+
+          for SERVICE in $SERVICES; do
+            FILE="preproduction/${SERVICE}/values.yaml"
+            if [[ -f "$FILE" ]]; then
+              OLD_TAG=$(yq eval '.deployment.imageRef.tag' "$FILE")
+              echo "Updating ${FILE}: ${OLD_TAG} -> ${VERSION}"
+              yq eval -i ".deployment.imageRef.tag = \"${VERSION}\"" "$FILE"
+            else
+              echo "Warning: ${FILE} not found, skipping"
+            fi
+          done
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v5
+        with:
+          path: gitops-repo
+          token: ${{ steps.app-token.outputs.token }}
+          commit-message: "ci: update hapi-fhir-jpaserver-starter to ${{ needs.parse-version.outputs.version }}"
+          title: "Deploy [preproduction] hapi-fhir-jpaserver-starter ${{ needs.parse-version.outputs.version }}"
+          body: |
+            ## Deployment Update
+
+            **Component**: hapi-fhir-jpaserver-starter
+            **Environment**: preproduction
+            **Version**: `${{ needs.parse-version.outputs.version }}`
+            **Tag**: `${{ github.event.release.tag_name }}`
+            **Services**: mapping-service, fhir-simulator-r4, fhir-simulator-r5
+
+            ---
+            **Source**: ${{ github.repository }}@${{ github.sha }}
+            **Triggered by**: @${{ github.actor }}
+          branch: ci/preproduction/hapi-fhir/${{ needs.parse-version.outputs.version }}
+          base: main
+          delete-branch: true
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "## Staging Deployment Initiated" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Component:** hapi-fhir-jpaserver-starter" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ needs.parse-version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Tag:** ${{ github.event.release.tag_name }}" >> $GITHUB_STEP_SUMMARY
