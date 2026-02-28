@@ -10,7 +10,7 @@ env:
   GCP_PROJECT_ID: dev-okeiro-454409
   GCP_REGION: europe-west8
   ARTIFACT_REGISTRY: europe-west8-docker.pkg.dev
-  REGISTRY_NAME: hapi-fhir
+  REGISTRY_NAME: monokeiro
 
 permissions:
   id-token: write

@@ -7,7 +7,7 @@ on:
 env:
   DEV_PROJECT_ID: dev-okeiro-454409
   DEV_REGISTRY: europe-west8-docker.pkg.dev
-  DEV_REGISTRY_NAME: hapi-fhir
+  DEV_REGISTRY_NAME: monokeiro
   STAGING_PROJECT_ID: s3ns-staging-okeiro
   STAGING_REGISTRY: europe-west9-docker.pkg.dev
   STAGING_REGISTRY_NAME: preproduction-okeiro
