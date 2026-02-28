@@ -71,28 +71,24 @@ jobs:
         run: |
           gcloud auth configure-docker ${{ env.STAGING_REGISTRY }} --quiet
 
-      - name: Retag all images from staging to production
+      - name: Retag image from staging to production
         env:
           VERSION: ${{ github.event.inputs.version }}
         run: |
-          SERVICES="mapping-service fhir-simulator-r4 fhir-simulator-r5"
+          IMAGE_NAME="hapi-fhir-jpaserver-starter"
+          STAGING_IMAGE="${{ env.STAGING_REGISTRY }}/${{ env.STAGING_PROJECT_ID }}/${{ env.STAGING_REGISTRY_NAME }}/${IMAGE_NAME}:${VERSION}"
+          PROD_IMAGE_BASE="${{ env.PROD_REGISTRY }}/${{ env.PROD_PROJECT_ID }}/${{ env.PROD_REGISTRY_NAME }}/${IMAGE_NAME}"
 
-          for SERVICE in $SERVICES; do
-            STAGING_IMAGE="${{ env.STAGING_REGISTRY }}/${{ env.STAGING_PROJECT_ID }}/${{ env.STAGING_REGISTRY_NAME }}/${SERVICE}:${VERSION}"
-            PROD_IMAGE_BASE="${{ env.PROD_REGISTRY }}/${{ env.PROD_PROJECT_ID }}/${{ env.PROD_REGISTRY_NAME }}/${SERVICE}"
+          echo "Pulling: $STAGING_IMAGE"
+          docker pull "$STAGING_IMAGE"
 
-            echo "--- Retagging ${SERVICE} ---"
-            echo "Pulling: $STAGING_IMAGE"
-            docker pull "$STAGING_IMAGE"
+          docker tag "$STAGING_IMAGE" "${PROD_IMAGE_BASE}:${VERSION}"
+          docker tag "$STAGING_IMAGE" "${PROD_IMAGE_BASE}:latest"
 
-            docker tag "$STAGING_IMAGE" "${PROD_IMAGE_BASE}:${VERSION}"
-            docker tag "$STAGING_IMAGE" "${PROD_IMAGE_BASE}:latest"
+          docker push "${PROD_IMAGE_BASE}:${VERSION}"
+          docker push "${PROD_IMAGE_BASE}:latest"
 
-            docker push "${PROD_IMAGE_BASE}:${VERSION}"
-            docker push "${PROD_IMAGE_BASE}:latest"
-
-            echo "Done: ${SERVICE}:${VERSION}"
-          done
+          echo "Done: ${IMAGE_NAME}:${VERSION}"
 
   cve-scan:
     name: CVE Scan Before Production Deploy
@@ -113,51 +109,93 @@ jobs:
 
       - name: Pull image from registry
         run: |
-          docker pull "${{ env.PROD_REGISTRY }}/${{ env.PROD_PROJECT_ID }}/${{ env.PROD_REGISTRY_NAME }}/mapping-service:${{ github.event.inputs.version }}"
+          docker pull "${{ env.PROD_REGISTRY }}/${{ env.PROD_PROJECT_ID }}/${{ env.PROD_REGISTRY_NAME }}/hapi-fhir-jpaserver-starter:${{ github.event.inputs.version }}"
 
       - name: Trivy CVE Scan
         uses: ./.github/actions/trivy-scan
         with:
-          image: "${{ env.PROD_REGISTRY }}/${{ env.PROD_PROJECT_ID }}/${{ env.PROD_REGISTRY_NAME }}/mapping-service:${{ github.event.inputs.version }}"
+          image: "${{ env.PROD_REGISTRY }}/${{ env.PROD_PROJECT_ID }}/${{ env.PROD_REGISTRY_NAME }}/hapi-fhir-jpaserver-starter:${{ github.event.inputs.version }}"
           fail-on-critical: 'true'
           max-high-cves: '5'
           block: 'true'
 
   create-gitops-pr:
-    name: Create Production GitOps PR (${{ matrix.service }})
+    name: Create Production GitOps PR
     needs: retag-and-push
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        service:
-          - mapping-service
-          - fhir-simulator-r4
-          - fhir-simulator-r5
     concurrency:
-      group: gitops-production-${{ matrix.service }}
+      group: gitops-production-hapi-fhir
       cancel-in-progress: false
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Create GitOps PR
-        uses: ./.github/actions/argocd-pr
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
         with:
-          env-name: production
-          component-name: ${{ matrix.service }}
-          gitops-folder: production/${{ matrix.service }}
-          gitops-values-file: values.yaml
-          image-tag-paths: '["deployment.imageRef.tag"]'
-          image-tag: ${{ github.event.inputs.version }}
-          github-app-id: ${{ vars.GITOPS_APP_ID }}
-          github-app-private-key: ${{ secrets.GITOPS_APP_PRIVATE_KEY }}
+          app-id: ${{ vars.GITOPS_APP_ID }}
+          private-key: ${{ secrets.GITOPS_APP_PRIVATE_KEY }}
+          owner: okeiro
+          repositories: helm-charts
+
+      - name: Checkout GitOps repo
+        uses: actions/checkout@v4
+        with:
+          repository: okeiro/helm-charts
+          ref: main
+          path: gitops-repo
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Install yq
+        run: |
+          if ! command -v yq &> /dev/null; then
+            sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+            sudo chmod +x /usr/local/bin/yq
+          fi
+
+      - name: Update image tags
+        working-directory: gitops-repo
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          SERVICES="mapping-service fhir-simulator-r4 fhir-simulator-r5"
+
+          for SERVICE in $SERVICES; do
+            FILE="production/${SERVICE}/values.yaml"
+            if [[ -f "$FILE" ]]; then
+              OLD_TAG=$(yq eval '.deployment.imageRef.tag' "$FILE")
+              echo "Updating ${FILE}: ${OLD_TAG} -> ${VERSION}"
+              yq eval -i ".deployment.imageRef.tag = \"${VERSION}\"" "$FILE"
+            else
+              echo "Warning: ${FILE} not found, skipping"
+            fi
+          done
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v5
+        with:
+          path: gitops-repo
+          token: ${{ steps.app-token.outputs.token }}
+          commit-message: "ci: update hapi-fhir-jpaserver-starter to ${{ github.event.inputs.version }}"
+          title: "Deploy [production] hapi-fhir-jpaserver-starter ${{ github.event.inputs.version }}"
+          body: |
+            ## Deployment Update
+
+            **Component**: hapi-fhir-jpaserver-starter
+            **Environment**: production
+            **Version**: `${{ github.event.inputs.version }}`
+            **Services**: mapping-service, fhir-simulator-r4, fhir-simulator-r5
+
+            ---
+            **Source**: ${{ github.repository }}@${{ github.sha }}
+            **Triggered by**: @${{ github.actor }}
+          branch: ci/production/hapi-fhir/${{ github.event.inputs.version }}
+          base: main
+          delete-branch: true
 
       - name: Summary
         if: success()
         run: |
           echo "## Production Deployment Initiated" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Component:** ${{ matrix.service }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Component:** hapi-fhir-jpaserver-starter" >> $GITHUB_STEP_SUMMARY
           echo "**Version:** ${{ github.event.inputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "**Triggered by:** @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
