@@ -5,12 +5,10 @@ on:
     types: [published]
 
 env:
-  DEV_PROJECT_ID: dev-okeiro-454409
-  DEV_REGISTRY: europe-west8-docker.pkg.dev
-  DEV_REGISTRY_NAME: monokeiro
-  STAGING_PROJECT_ID: s3ns-staging-okeiro
-  STAGING_REGISTRY: europe-west9-docker.pkg.dev
-  STAGING_REGISTRY_NAME: preproduction-okeiro
+  GCP_PROJECT_ID: s3ns-staging-okeiro
+  GCP_REGION: europe-west9
+  ARTIFACT_REGISTRY: europe-west9-docker.pkg.dev
+  REGISTRY_NAME: preproduction-okeiro
   IMAGE_NAME: hapi-fhir-jpaserver-starter
 
 permissions:
@@ -34,8 +32,8 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Tag: $TAG_NAME -> Version: $VERSION"
 
-  retag-and-push:
-    name: Promote Dev Image to Staging
+  build-push:
+    name: Build and Push to Staging
     needs: parse-version
     runs-on: ubuntu-latest
     environment:
@@ -43,49 +41,42 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
 
-      - name: Setup GCP (Staging)
+      - name: Setup GCP
         uses: ./.github/actions/gcp-setup
         with:
           service-account-email: ${{ vars.GCP_SA_EMAIL }}
           workload-identity-provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          artifact-registry-endpoint: ${{ env.STAGING_REGISTRY }}
+          artifact-registry-endpoint: ${{ env.ARTIFACT_REGISTRY }}
 
-      - name: Authenticate to dev registry
-        run: |
-          gcloud auth configure-docker ${{ env.DEV_REGISTRY }} --quiet
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Pull dev image and push to staging
-        env:
-          VERSION: ${{ needs.parse-version.outputs.version }}
-        run: |
-          DEV_IMAGE="${DEV_REGISTRY}/${DEV_PROJECT_ID}/${DEV_REGISTRY_NAME}/${IMAGE_NAME}:${{ github.sha }}"
-          STAGING_BASE="${STAGING_REGISTRY}/${STAGING_PROJECT_ID}/${STAGING_REGISTRY_NAME}/${IMAGE_NAME}"
-
-          echo "Pulling dev image: $DEV_IMAGE"
-          docker pull "$DEV_IMAGE"
-
-          docker tag "$DEV_IMAGE" "${STAGING_BASE}:${VERSION}"
-          docker tag "$DEV_IMAGE" "${STAGING_BASE}:${{ github.sha }}"
-          docker tag "$DEV_IMAGE" "${STAGING_BASE}:latest"
-
-          docker push "${STAGING_BASE}:${VERSION}"
-          docker push "${STAGING_BASE}:${{ github.sha }}"
-          docker push "${STAGING_BASE}:latest"
-
-          echo "Promoted dev image to staging: ${VERSION}"
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: default
+          push: true
+          tags: |
+            ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${{ needs.parse-version.outputs.version }}
+            ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Summary
         run: |
-          echo "## Docker Image Promoted to Staging" >> $GITHUB_STEP_SUMMARY
+          echo "## Docker Image Built & Pushed to Staging" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Source:** \`${{ env.DEV_REGISTRY }}/${{ env.DEV_PROJECT_ID }}/${{ env.DEV_REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Destination:** \`${{ env.STAGING_REGISTRY }}/${{ env.STAGING_PROJECT_ID }}/${{ env.STAGING_REGISTRY_NAME }}/${{ env.IMAGE_NAME }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Tags:** \`${{ needs.parse-version.outputs.version }}\`, \`${{ github.sha }}\`, \`latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Registry:** \`${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** ${{ env.IMAGE_NAME }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Tags:** \`${{ needs.parse-version.outputs.version }}\`, \`latest\`" >> $GITHUB_STEP_SUMMARY
 
   cve-scan:
     name: CVE Scan
-    needs: [parse-version, retag-and-push]
+    needs: [parse-version, build-push]
     runs-on: ubuntu-latest
     environment:
       name: "staging"
@@ -98,23 +89,23 @@ jobs:
         with:
           service-account-email: ${{ vars.GCP_SA_EMAIL }}
           workload-identity-provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          artifact-registry-endpoint: ${{ env.STAGING_REGISTRY }}
+          artifact-registry-endpoint: ${{ env.ARTIFACT_REGISTRY }}
 
       - name: Pull image from registry
         run: |
-          docker pull "${{ env.STAGING_REGISTRY }}/${{ env.STAGING_PROJECT_ID }}/${{ env.STAGING_REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${{ needs.parse-version.outputs.version }}"
+          docker pull "${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${{ needs.parse-version.outputs.version }}"
 
       - name: Trivy CVE Scan
         uses: ./.github/actions/trivy-scan
         with:
-          image: "${{ env.STAGING_REGISTRY }}/${{ env.STAGING_PROJECT_ID }}/${{ env.STAGING_REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${{ needs.parse-version.outputs.version }}"
+          image: "${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${{ needs.parse-version.outputs.version }}"
           fail-on-critical: 'true'
           max-high-cves: '5'
           block: 'true'
 
   create-gitops-pr:
     name: Create Staging GitOps PR
-    needs: [parse-version, retag-and-push, cve-scan]
+    needs: [parse-version, build-push, cve-scan]
     runs-on: ubuntu-latest
     concurrency:
       group: gitops-staging-hapi-fhir
