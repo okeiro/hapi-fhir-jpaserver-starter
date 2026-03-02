@@ -15,6 +15,8 @@ env:
   PROD_PROJECT_ID: s3ns-production-okeiro
   PROD_REGISTRY: europe-west9-docker.pkg.dev
   PROD_REGISTRY_NAME: production
+  GCP_SA_EMAIL: github-hapi-fhir@s3ns-production-okeiro.iam.gserviceaccount.com
+  GCP_WORKLOAD_IDENTITY_PROVIDER: projects/810924144708/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider
 
 permissions:
   id-token: write
@@ -63,8 +65,8 @@ jobs:
       - name: Setup GCP (Production)
         uses: ./.github/actions/gcp-setup
         with:
-          service-account-email: ${{ vars.GCP_SA_EMAIL }}
-          workload-identity-provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service-account-email: ${{ env.GCP_SA_EMAIL }}
+          workload-identity-provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           artifact-registry-endpoint: ${{ env.PROD_REGISTRY }}
 
       - name: Authenticate to staging registry
@@ -103,8 +105,8 @@ jobs:
       - name: Setup GCP
         uses: ./.github/actions/gcp-setup
         with:
-          service-account-email: ${{ vars.GCP_SA_EMAIL }}
-          workload-identity-provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service-account-email: ${{ env.GCP_SA_EMAIL }}
+          workload-identity-provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           artifact-registry-endpoint: ${{ env.PROD_REGISTRY }}
 
       - name: Pull image from registry

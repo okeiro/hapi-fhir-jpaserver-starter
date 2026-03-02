@@ -11,6 +11,8 @@ env:
   GCP_REGION: europe-west8
   ARTIFACT_REGISTRY: europe-west8-docker.pkg.dev
   REGISTRY_NAME: monokeiro
+  GCP_SA_EMAIL: github-hapi-fhir@dev-okeiro-454409.iam.gserviceaccount.com
+  GCP_WORKLOAD_IDENTITY_PROVIDER: projects/428945013533/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider
 
 permissions:
   id-token: write
@@ -30,8 +32,8 @@ jobs:
       - name: Setup GCP
         uses: ./.github/actions/gcp-setup
         with:
-          service-account-email: ${{ vars.GCP_SA_EMAIL }}
-          workload-identity-provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service-account-email: ${{ env.GCP_SA_EMAIL }}
+          workload-identity-provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           artifact-registry-endpoint: ${{ env.ARTIFACT_REGISTRY }}
 
       - name: Set up Docker Buildx
@@ -70,8 +72,8 @@ jobs:
       - name: Setup GCP
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_SA_EMAIL }}
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_SA_EMAIL }}
 
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ env.ARTIFACT_REGISTRY }} --quiet
