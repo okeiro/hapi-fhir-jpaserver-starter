@@ -9,18 +9,22 @@ import java.util.regex.Pattern;
 
 public class Path {
 
-	private static final Pattern PATH_PATTERN = Pattern.compile(
-		"^" +
-			"((?:[A-Za-z0-9_]+(?:\\[[0-9]+])?\\.)*)" +   // nested group(s), each optionally repeated
-			"([A-Z0-9]+)" +                              // segment
-			"(?:\\[([0-9]+)])?" +                        // optional segment repetition
-			"(?:-" +
-			"([1-9][0-9]*)" +                        		// field
-			"(?:\\[([0-9]+)])?" +                    		// field repetition
-			"(?:-([1-9][0-9]*))?" +                  		// component
-			"(?:-([1-9][0-9]*))?" +                  		// subcomponent
-			")?$"
-	);
+	private static final Pattern PATH_PATTERN = Pattern.compile("^" + "((?:[A-Za-z0-9_]+(?:\\[[0-9]+])?\\.)*)"
+			+ // nested group(s), each optionally repeated
+			"([A-Z0-9]+)"
+			+ // segment
+			"(?:\\[([0-9]+)])?"
+			+ // optional segment repetition
+			"(?:-"
+			+ "([1-9][0-9]*)"
+			+ // field
+			"(?:\\[([0-9]+)])?"
+			+ // field repetition
+			"(?:-([1-9][0-9]*))?"
+			+ // component
+			"(?:-([1-9][0-9]*))?"
+			+ // subcomponent
+			")?$");
 
 	private final List<String> groups = new ArrayList<>();
 	private final List<Integer> groupRepetitions = new ArrayList<>();
@@ -67,29 +71,48 @@ public class Path {
 		this.subComponent = matcher.group(7) != null ? Integer.parseInt(matcher.group(7)) - 1 : null;
 	}
 
-	public List<String> getGroups() { return groups; }
-	public List<Integer> getGroupRepetitions() { return groupRepetitions; }
+	public List<String> getGroups() {
+		return groups;
+	}
 
-	public String getSegment() { return segment; }
-	public Integer getSegmentRepetition() { return segmentRepetition; }
+	public List<Integer> getGroupRepetitions() {
+		return groupRepetitions;
+	}
 
-	public Integer getField() { return field; }
-	public Integer getFieldRepetition() { return fieldRepetition; }
+	public String getSegment() {
+		return segment;
+	}
 
-	public Integer getComponent() { return component; }
-	public Integer getSubComponent() { return subComponent; }
+	public Integer getSegmentRepetition() {
+		return segmentRepetition;
+	}
+
+	public Integer getField() {
+		return field;
+	}
+
+	public Integer getFieldRepetition() {
+		return fieldRepetition;
+	}
+
+	public Integer getComponent() {
+		return component;
+	}
+
+	public Integer getSubComponent() {
+		return subComponent;
+	}
 
 	@Override
 	public String toString() {
-		return "Path{" +
-			"groups=" + groups +
-			", groupRepetitions=" + groupRepetitions +
-			", segment='" + segment + '\'' +
-			", segmentRepetition=" + segmentRepetition +
-			", field=" + field +
-			", fieldRepetition=" + fieldRepetition +
-			", component=" + component +
-			", subComponent=" + subComponent +
-			'}';
+		return "Path{" + "groups="
+				+ groups + ", groupRepetitions="
+				+ groupRepetitions + ", segment='"
+				+ segment + '\'' + ", segmentRepetition="
+				+ segmentRepetition + ", field="
+				+ field + ", fieldRepetition="
+				+ fieldRepetition + ", component="
+				+ component + ", subComponent="
+				+ subComponent + '}';
 	}
 }

@@ -21,19 +21,27 @@ import static ca.uhn.fhir.jpa.starter.mapping.model.Variable.VariableMode.OUTPUT
 public class FFHIRPathHostServices implements IHostApplicationServices {
 
 	@Override
-	public List<Base> resolveConstant(FHIRPathEngine fpe, Object appContext, String name, FHIRPathConstantEvaluationMode fhirPathConstantEvaluationMode) throws PathEngineException {
+	public List<Base> resolveConstant(
+			FHIRPathEngine fpe,
+			Object appContext,
+			String name,
+			FHIRPathConstantEvaluationMode fhirPathConstantEvaluationMode)
+			throws PathEngineException {
 		Variables vars = (Variables) appContext;
 		Object res = vars.get(INPUT, name);
-		if (res == null)
-			res = vars.get(OUTPUT, name);
+		if (res == null) res = vars.get(OUTPUT, name);
 		List<Base> result = new ArrayList<Base>();
-		if (res != null)
-			result.add((Base) res);
+		if (res != null) result.add((Base) res);
 		return result;
 	}
 
 	@Override
-	public TypeDetails resolveConstantType(FHIRPathEngine fpe, Object appContext, String s, FHIRPathConstantEvaluationMode fhirPathConstantEvaluationMode) throws PathEngineException {
+	public TypeDetails resolveConstantType(
+			FHIRPathEngine fpe,
+			Object appContext,
+			String s,
+			FHIRPathConstantEvaluationMode fhirPathConstantEvaluationMode)
+			throws PathEngineException {
 		throw new Error("Not Implemented Yet");
 	}
 
@@ -48,23 +56,33 @@ public class FFHIRPathHostServices implements IHostApplicationServices {
 	}
 
 	@Override
-	public TypeDetails checkFunction(FHIRPathEngine engine, Object appContext, String functionName, TypeDetails focus, List<TypeDetails> parameters) throws PathEngineException {
+	public TypeDetails checkFunction(
+			FHIRPathEngine engine,
+			Object appContext,
+			String functionName,
+			TypeDetails focus,
+			List<TypeDetails> parameters)
+			throws PathEngineException {
 		throw new Error("Not Implemented Yet");
 	}
 
 	@Override
-	public List<Base> executeFunction(FHIRPathEngine fpe, Object appContext, List<Base> focus, String functionName, List<List<Base>> parameters) {
+	public List<Base> executeFunction(
+			FHIRPathEngine fpe, Object appContext, List<Base> focus, String functionName, List<List<Base>> parameters) {
 		throw new Error("Not Implemented Yet");
 	}
 
 	@Override
 	public Base resolveReference(FHIRPathEngine fpe, Object appContext, String url, Base base) throws FHIRException {
-		throw new NotImplementedException("Not done yet (FFHIRPathHostServices.conformsToProfile), when item is element");
+		throw new NotImplementedException(
+				"Not done yet (FFHIRPathHostServices.conformsToProfile), when item is element");
 	}
 
 	@Override
-	public boolean conformsToProfile(FHIRPathEngine fpe, Object appContext, Base item, String url) throws FHIRException {
-		throw new NotImplementedException("Not done yet (FFHIRPathHostServices.conformsToProfile), when item is element");
+	public boolean conformsToProfile(FHIRPathEngine fpe, Object appContext, Base item, String url)
+			throws FHIRException {
+		throw new NotImplementedException(
+				"Not done yet (FFHIRPathHostServices.conformsToProfile), when item is element");
 	}
 
 	@Override
@@ -76,5 +94,4 @@ public class FFHIRPathHostServices implements IHostApplicationServices {
 	public boolean paramIsType(String name, int index) {
 		throw new Error("Not Implemented Yet");
 	}
-
 }

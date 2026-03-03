@@ -175,7 +175,7 @@ You can also use several profiles using coma-separated list of profiles in the v
 --e "--spring.profiles.active=qe,other"
 ```
 
-If you want to use this with docker-compose, here is an example file using a single external profile and a postgres container for database : 
+If you want to use this with docker-compose, here is an example file using a single external profile and a postgres container for database :
 
 ```yaml
 version: "3.8"
@@ -209,14 +209,14 @@ volumes:
   hapi-fhir-postgres:
 ```
 
-You can retrieve the environment variables : 
+You can retrieve the environment variables :
 
 ```
 SPRING_CONFIG_ADDITIONAL_LOCATION: "/profiles/"
 SPRING_PROFILES_ACTIVE: "qe"
 ```
 
-as well as the volume : 
+as well as the volume :
 
 ```
 volumes:

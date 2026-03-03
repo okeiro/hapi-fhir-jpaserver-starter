@@ -1,0 +1,138 @@
+# docker-compose.test.yml
+# Test local des 3 conteneurs (R4, R5, mapping-service) depuis une seule image
+#
+# Usage :
+#   docker compose -f docker-compose.test.yml build
+#   docker compose -f docker-compose.test.yml up -d
+#
+# Endpoints :
+#   - FHIR R4 :          http://localhost:8080/fhir/metadata
+#   - FHIR R5 :          http://localhost:8081/fhir/metadata
+#   - Mapping Service :  http://localhost:8082/fhir/metadata
+
+services:
+
+  # ──────────────────────────────────────────────
+  # FHIR R4
+  # ──────────────────────────────────────────────
+  fhir-simulator-r4:
+    build:
+      context: .
+      target: default
+    container_name: fhir-simulator-r4
+    restart: on-failure
+    environment:
+      HAPI_FHIR_FHIR_VERSION: "R4"
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres-r4:5432/hapi_r4"
+      SPRING_DATASOURCE_USERNAME: "admin"
+      SPRING_DATASOURCE_PASSWORD: "admin"
+      SPRING_DATASOURCE_DRIVERCLASSNAME: "org.postgresql.Driver"
+      SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: "ca.uhn.fhir.jpa.model.dialect.HapiFhirPostgresDialect"
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres-r4:
+        condition: service_healthy
+
+  postgres-r4:
+    image: postgres:16-alpine
+    container_name: postgres-r4
+    restart: always
+    environment:
+      POSTGRES_DB: "hapi_r4"
+      POSTGRES_USER: "admin"
+      POSTGRES_PASSWORD: "admin"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d hapi_r4"]
+      interval: 10s
+      timeout: 5s
+      start_period: 5s
+      retries: 5
+    volumes:
+      - postgres-r4-data:/var/lib/postgresql/data
+
+  # ──────────────────────────────────────────────
+  # FHIR R5
+  # ──────────────────────────────────────────────
+  fhir-simulator-r5:
+    build:
+      context: .
+      target: default
+    container_name: fhir-simulator-r5
+    restart: on-failure
+    environment:
+      HAPI_FHIR_FHIR_VERSION: "R5"
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres-r5:5432/hapi_r5"
+      SPRING_DATASOURCE_USERNAME: "admin"
+      SPRING_DATASOURCE_PASSWORD: "admin"
+      SPRING_DATASOURCE_DRIVERCLASSNAME: "org.postgresql.Driver"
+      SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: "ca.uhn.fhir.jpa.model.dialect.HapiFhirPostgresDialect"
+    ports:
+      - "8081:8080"
+    depends_on:
+      postgres-r5:
+        condition: service_healthy
+
+  postgres-r5:
+    image: postgres:16-alpine
+    container_name: postgres-r5
+    restart: always
+    environment:
+      POSTGRES_DB: "hapi_r5"
+      POSTGRES_USER: "admin"
+      POSTGRES_PASSWORD: "admin"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d hapi_r5"]
+      interval: 10s
+      timeout: 5s
+      start_period: 5s
+      retries: 5
+    volumes:
+      - postgres-r5-data:/var/lib/postgresql/data
+
+  # ──────────────────────────────────────────────
+  # Mapping Service (R4 + moteur de mapping)
+  # ──────────────────────────────────────────────
+  mapping-service:
+    build:
+      context: .
+      target: default
+    container_name: mapping-service
+    restart: on-failure
+    environment:
+      SPRING_PROFILES_ACTIVE: "mapping"
+      SPRING_CONFIG_ADDITIONAL_LOCATION: "/profiles/"
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres-mapping:5432/hapi_mapping"
+      SPRING_DATASOURCE_USERNAME: "admin"
+      SPRING_DATASOURCE_PASSWORD: "admin"
+      SPRING_DATASOURCE_DRIVERCLASSNAME: "org.postgresql.Driver"
+      SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: "ca.uhn.fhir.jpa.model.dialect.HapiFhirPostgresDialect"
+    volumes:
+      - ./profiles:/profiles:ro
+    ports:
+      - "8082:8080"
+    depends_on:
+      postgres-mapping:
+        condition: service_healthy
+
+  postgres-mapping:
+    image: postgres:16-alpine
+    container_name: postgres-mapping
+    restart: always
+    environment:
+      POSTGRES_DB: "hapi_mapping"
+      POSTGRES_USER: "admin"
+      POSTGRES_PASSWORD: "admin"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d hapi_mapping"]
+      interval: 10s
+      timeout: 5s
+      start_period: 5s
+      retries: 5
+    volumes:
+      - postgres-mapping-data:/var/lib/postgresql/data
+
+volumes:
+  postgres-r4-data:
+  postgres-r5-data:
+  postgres-mapping-data:

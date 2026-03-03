@@ -5,13 +5,13 @@ import io.sentry.Sentry;
 
 public class SentryErrorReporter implements ErrorReporter {
 
-    @Override
-    public void reportException(Throwable t) {
-        Sentry.captureException(t);
-    }
+	@Override
+	public void reportException(Throwable t) {
+		Sentry.captureException(t);
+	}
 
-    @Override
-    public void reportMessage(String message) {
-        Sentry.captureMessage(message);
-    }
+	@Override
+	public void reportMessage(String message) {
+		Sentry.captureMessage(message);
+	}
 }

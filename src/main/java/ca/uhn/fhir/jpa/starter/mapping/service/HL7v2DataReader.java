@@ -16,26 +16,26 @@ import java.util.Base64;
 // TODO See for different HL7v2 version ?
 public class HL7v2DataReader {
 
-    private static final Logger logger = LoggerFactory.getLogger(HL7v2DataReader.class);
+	private static final Logger logger = LoggerFactory.getLogger(HL7v2DataReader.class);
 
-    /**
-     * Parses a Base64 encoded HL7v2 string and returns a {@link Message}.
-     *
-     * @param content The Base64 encoded HL7v2 string to parse.
-     * @return A JSONObject parsed from the decoded JSON content.
-     * @throws InternalErrorException If there's an error while parsing or decoding the JSON content.
-     */
-    public static Message parseData(String content) {
-        try (HapiContext context = new DefaultHapiContext()) {
-            Parser parser = context.getGenericParser();
-            String hl7v2Content = new String(Base64.getDecoder().decode(content), StandardCharsets.UTF_8);
-            return parser.parse(hl7v2Content);
-        } catch (IOException e) {
-            logger.error("Error while creating context for HL7v2 parsing !", e);
-            throw new InternalErrorException("Error while creating context for HL7v2 parsing !");
-        } catch (HL7Exception e) {
-            logger.error("Error while reading HL7v2 Data from DocumentReference !", e);
-            throw new InternalErrorException("Error while reading HL7v2 Data from DocumentReference !");
-        }
-    }
+	/**
+	 * Parses a Base64 encoded HL7v2 string and returns a {@link Message}.
+	 *
+	 * @param content The Base64 encoded HL7v2 string to parse.
+	 * @return A JSONObject parsed from the decoded JSON content.
+	 * @throws InternalErrorException If there's an error while parsing or decoding the JSON content.
+	 */
+	public static Message parseData(String content) {
+		try (HapiContext context = new DefaultHapiContext()) {
+			Parser parser = context.getGenericParser();
+			String hl7v2Content = new String(Base64.getDecoder().decode(content), StandardCharsets.UTF_8);
+			return parser.parse(hl7v2Content);
+		} catch (IOException e) {
+			logger.error("Error while creating context for HL7v2 parsing !", e);
+			throw new InternalErrorException("Error while creating context for HL7v2 parsing !");
+		} catch (HL7Exception e) {
+			logger.error("Error while reading HL7v2 Data from DocumentReference !", e);
+			throw new InternalErrorException("Error while reading HL7v2 Data from DocumentReference !");
+		}
+	}
 }

@@ -13,8 +13,8 @@ public class OnSentryEnabled implements Condition {
 		if (appProperties == null) return false;
 		AppProperties.SentryProperties sentryProperties = appProperties.getSentry();
 		return sentryProperties != null
-			&& sentryProperties.isEnabled()
-			&& sentryProperties.getDsn() != null
-			&& !sentryProperties.getDsn().isEmpty();
+				&& sentryProperties.isEnabled()
+				&& sentryProperties.getDsn() != null
+				&& !sentryProperties.getDsn().isEmpty();
 	}
 }

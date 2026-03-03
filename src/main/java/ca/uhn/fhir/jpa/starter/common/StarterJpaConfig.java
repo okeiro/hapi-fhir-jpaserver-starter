@@ -1,9 +1,9 @@
 package ca.uhn.fhir.jpa.starter.common;
 
 import ca.uhn.fhir.batch2.config.Batch2JobRegisterer;
+import ca.uhn.fhir.batch2.jobs.bulkmodify.reindex.ReindexProvider;
 import ca.uhn.fhir.batch2.jobs.export.BulkDataExportProvider;
 import ca.uhn.fhir.batch2.jobs.imprt.BulkDataImportProvider;
-import ca.uhn.fhir.batch2.jobs.reindex.ReindexProvider;
 import ca.uhn.fhir.context.ConfigurationException;
 import ca.uhn.fhir.context.FhirContext;
 import ca.uhn.fhir.context.FhirVersionEnum;
@@ -50,11 +50,10 @@ import ca.uhn.fhir.jpa.starter.annotations.OnCorsPresent;
 import ca.uhn.fhir.jpa.starter.annotations.OnImplementationGuidesPresent;
 import ca.uhn.fhir.jpa.starter.common.validation.IRepositoryValidationInterceptorFactory;
 import ca.uhn.fhir.jpa.starter.elastic.ElasticsearchBootSvcImpl;
+import ca.uhn.fhir.jpa.starter.errorreport.ErrorReportingExceptionInterceptor;
 import ca.uhn.fhir.jpa.starter.ig.ExtendedPackageInstallationSpec;
 import ca.uhn.fhir.jpa.starter.ig.IImplementationGuideOperationProvider;
-import ca.uhn.fhir.jpa.starter.errorreport.ErrorReportingExceptionInterceptor;
 import ca.uhn.fhir.jpa.starter.mapping.provider.TransformProvider;
-import ca.uhn.fhir.jpa.starter.util.EnvironmentHelper;
 import ca.uhn.fhir.jpa.subscription.util.SubscriptionDebugLogInterceptor;
 import ca.uhn.fhir.jpa.util.ResourceCountCache;
 import ca.uhn.fhir.mdm.provider.MdmProviderLoader;
@@ -460,7 +459,7 @@ public class StarterJpaConfig {
 			fhirServer.registerProvider(binaryAccessProvider.get());
 		}
 
-      errorReportingExceptionInterceptor.ifPresent(fhirServer::registerInterceptor);
+		errorReportingExceptionInterceptor.ifPresent(fhirServer::registerInterceptor);
 
 		// Validation
 
