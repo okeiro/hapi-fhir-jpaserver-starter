@@ -944,10 +944,9 @@ public class Mapper {
 					if (!fields.isEmpty()) {
 						if (path.getComponent() != null) {
 							ca.uhn.hl7v2.model.Type data = fields.get(0).getData();
-							//Data is composite
+							// Data is composite
 							if (data instanceof GenericComposite) {
-								GenericComposite fieldData =
-									(GenericComposite) data;
+								GenericComposite fieldData = (GenericComposite) data;
 								Varies component = (Varies) fieldData.getComponent(path.getComponent());
 								if (path.getSubComponent() != null) {
 									GenericComposite componentData = (GenericComposite) component.getData();
@@ -957,13 +956,16 @@ public class Mapper {
 									elementStringValue = component.getData().toString();
 								}
 							}
-							//Data is not composite (primitive)
+							// Data is not composite (primitive)
 							else {
-								//Check we are not looking for anything other than the first component (no other component, no sub-component)
-								if (path.getComponent() != null && path.getComponent() == 0 && path.getSubComponent() == null) {
+								// Check we are not looking for anything other than the first component (no other
+								// component, no sub-component)
+								if (path.getComponent() != null
+										&& path.getComponent() == 0
+										&& path.getSubComponent() == null) {
 									elementStringValue = data.toString();
 								}
-								//Otherwise, we don't set the value and will log as not found
+								// Otherwise, we don't set the value and will log as not found
 							}
 						} else {
 							elementStringValue = fields.get(0).getData().toString();
