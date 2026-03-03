@@ -18,93 +18,132 @@ import java.io.ByteArrayInputStream;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class MapperTestHL7v2ToFHIR {
-    private ValidationSupportChain validationSupport;
-    private IWorkerContext hapiContext;
+	private ValidationSupportChain validationSupport;
+	private IWorkerContext hapiContext;
 	private IFhirResourceDao<StructureMap> structureMapDao;
-    private final String hl7v2Message = "MSH|^~\\&|HIS|RIH|EKG|EKG|199904140038||ADT^A01||P|2.2\r"
-            + "PID|0001|00009874|00001122|A00977|SMITH^JOHN^M|MOM|19581119|F|NOTREAL^LINDA^M|C|564 SPRING ST^^NEEDHAM^MA^02494^US|0002|(818)565-1551|(425)828-3344|E|S|C|0000444444|252-00-4414||||SA|||SA||||NONE|V1|0001|I|D.ER^50A^M110^01|ER|P00055|11B^M011^02|070615^BATMAN^GEORGE^L|555888^NOTREAL^BOB^K^DR^MD|777889^NOTREAL^SAM^T^DR^MD^PHD|ER|D.WT^1A^M010^01|||ER|AMB|02|070615^NOTREAL^BILL^L|ER|000001916994|D||||||||||||||||GDD|WA|NORM|02|O|02|E.IN^02D^M090^01|E.IN^01D^M080^01|199904072124|199904101200|199904101200||||5555112333|||666097^NOTREAL^MANNY^P\r"
-            + "NK1|0222555|NOTREAL^JAMES^R|FA|STREET^OTHER STREET^CITY^ST^55566|(222)111-3333|(888)999-0000|||||||ORGANIZATION\r"
-            + "PV1|0001|I|D.ER^1F^M950^01|ER|P000998|11B^M011^02|070615^BATMAN^GEORGE^L|555888^OKNEL^BOB^K^DR^MD|777889^NOTREAL^SAM^T^DR^MD^PHD|ER|D.WT^1A^M010^01|||ER|AMB|02|070615^VOICE^BILL^L|ER|000001916994|D||||||||||||||||GDD|WA|NORM|02|O|02|E.IN^02D^M090^01|E.IN^01D^M080^01|199904072124|199904101200|||||5555112333|||666097^DNOTREAL^MANNY^P\r"
-            + "PV2|||0112^TESTING|55555^PATIENT IS NORMAL|NONE|||19990225|19990226|1|1|TESTING|555888^NOTREAL^BOB^K^DR^MD||||||||||PROD^003^099|02|ER||NONE|19990225|19990223|19990316|NONE\r"
-            + "AL1||SEV|001^POLLEN\r"
-            + "GT1||0222PL|NOTREAL^BOB^B||STREET^OTHER STREET^CITY^ST^77787|(444)999-3333|(222)777-5555||||MO|111-33-5555||||NOTREAL GILL N|STREET^OTHER STREET^CITY^ST^99999|(111)222-3333\r"
-            + "IN1||022254P|4558PD|BLUE CROSS|STREET^OTHER STREET^CITY^ST^00990||(333)333-6666||221K|LENIX|||19980515|19990515|||PATIENT01 TEST D||||||||||||||||||02LL|022LP554";
+	private final String hl7v2Message = "MSH|^~\\&|HIS|RIH|EKG|EKG|199904140038||ADT^A01||P|2.2\r"
+		+ "PID|0001|00009874|00001122|A00977|SMITH^JOHN^M|MOM|19581119|F|NOTREAL^LINDA^M|C|564 SPRING ST^^NEEDHAM^MA^02494^US|0002|(818)565-1551|(425)828-3344|E|S|C|0000444444|252-00-4414||||SA|||SA||||NONE|V1|0001|I|D.ER^50A^M110^01|ER|P00055|11B^M011^02|070615^BATMAN^GEORGE^L|555888^NOTREAL^BOB^K^DR^MD|777889^NOTREAL^SAM^T^DR^MD^PHD|ER|D.WT^1A^M010^01|||ER|AMB|02|070615^NOTREAL^BILL^L|ER|000001916994|D||||||||||||||||GDD|WA|NORM|02|O|02|E.IN^02D^M090^01|E.IN^01D^M080^01|199904072124|199904101200|199904101200||||5555112333|||666097^NOTREAL^MANNY^P\r"
+		+ "NK1|0222555|NOTREAL^JAMES^R|FA|STREET^OTHER STREET^CITY^ST^55566|(222)111-3333|(888)999-0000|||||||ORGANIZATION\r"
+		+ "PV1|0001|I|D.ER^1F^M950^01|ER|P000998|11B^M011^02|070615^BATMAN^GEORGE^L|555888^OKNEL^BOB^K^DR^MD|777889^NOTREAL^SAM^T^DR^MD^PHD|ER|D.WT^1A^M010^01|||ER|AMB|02|070615^VOICE^BILL^L|ER|000001916994|D||||||||||||||||GDD|WA|NORM|02|O|02|E.IN^02D^M090^01|E.IN^01D^M080^01|199904072124|199904101200|||||5555112333|||666097^DNOTREAL^MANNY^P\r"
+		+ "PV2|||0112^TESTING|55555^PATIENT IS NORMAL|NONE|||19990225|19990226|1|1|TESTING|555888^NOTREAL^BOB^K^DR^MD||||||||||PROD^003^099|02|ER||NONE|19990225|19990223|19990316|NONE\r"
+		+ "AL1||SEV|001^POLLEN\r"
+		+ "GT1||0222PL|NOTREAL^BOB^B||STREET^OTHER STREET^CITY^ST^77787|(444)999-3333|(222)777-5555||||MO|111-33-5555||||NOTREAL GILL N|STREET^OTHER STREET^CITY^ST^99999|(111)222-3333\r"
+		+ "IN1||022254P|4558PD|BLUE CROSS|STREET^OTHER STREET^CITY^ST^00990||(333)333-6666||221K|LENIX|||19980515|19990515|||PATIENT01 TEST D||||||||||||||||||02LL|022LP554";
+	private final String hl7v2MessageOneComponent = "MSH|^~\\&|HIS|RIH|EKG|EKG|199904140038||ADT^A01||P|2.2\r"
+		+ "PID|0001|00009874|00001122|A00977|SMITH^JOHN^M|MOM|19581119|F|NOTREAL^LINDA^M|C|564 SPRING ST^^NEEDHAM^MA^02494^US|0002|(818)565-1551|(425)828-3344|E|S|C|0000444444|252-00-4414||||SA|||SA||||NONE|V1|0001|I|D.ER^50A^M110^01|ER|P00055|11B^M011^02|070615^BATMAN^GEORGE^L|555888^NOTREAL^BOB^K^DR^MD|777889^NOTREAL^SAM^T^DR^MD^PHD|ER|D.WT^1A^M010^01|||ER|AMB|02|070615^NOTREAL^BILL^L|ER|000001916994|D||||||||||||||||GDD|WA|NORM|02|O|02|E.IN^02D^M090^01|E.IN^01D^M080^01|199904072124|199904101200|199904101200||||5555112333|||666097^NOTREAL^MANNY^P\r"
+		+ "NK1|0222555|NOTREAL|FA|STREET^OTHER STREET^CITY^ST^55566|(222)111-3333|(888)999-0000|||||||ORGANIZATION\r"
+		+ "PV1|0001|I|D.ER^1F^M950^01|ER|P000998|11B^M011^02|070615^BATMAN^GEORGE^L|555888^OKNEL^BOB^K^DR^MD|777889^NOTREAL^SAM^T^DR^MD^PHD|ER|D.WT^1A^M010^01|||ER|AMB|02|070615^VOICE^BILL^L|ER|000001916994|D||||||||||||||||GDD|WA|NORM|02|O|02|E.IN^02D^M090^01|E.IN^01D^M080^01|199904072124|199904101200|||||5555112333|||666097^DNOTREAL^MANNY^P\r"
+		+ "PV2|||0112^TESTING|55555^PATIENT IS NORMAL|NONE|||19990225|19990226|1|1|TESTING|555888^NOTREAL^BOB^K^DR^MD||||||||||PROD^003^099|02|ER||NONE|19990225|19990223|19990316|NONE\r"
+		+ "AL1||SEV|001^POLLEN\r"
+		+ "GT1||0222PL|NOTREAL^BOB^B||STREET^OTHER STREET^CITY^ST^77787|(444)999-3333|(222)777-5555||||MO|111-33-5555||||NOTREAL GILL N|STREET^OTHER STREET^CITY^ST^99999|(111)222-3333\r"
+		+ "IN1||022254P|4558PD|BLUE CROSS|STREET^OTHER STREET^CITY^ST^00990||(333)333-6666||221K|LENIX|||19980515|19990515|||PATIENT01 TEST D||||||||||||||||||02LL|022LP554";
 
-    @Test
-    void mapHL7v2ToFHIR() {
-        FhirContext context = FhirContext.forR4();
-        PrePopulatedValidationSupport prePopulatedValidationSupport = new PrePopulatedValidationSupport(context);
-        this.validationSupport = new ValidationSupportChain(prePopulatedValidationSupport, new DefaultProfileValidationSupport(context));
 
-        this.hapiContext = new HapiWorkerContext(context, this.validationSupport);// Init the Hapi Work
+	@Test
+	void mapHL7v2ToFHIR() {
+		FhirContext context = FhirContext.forR4();
+		PrePopulatedValidationSupport prePopulatedValidationSupport = new PrePopulatedValidationSupport(context);
+		this.validationSupport = new ValidationSupportChain(prePopulatedValidationSupport, new DefaultProfileValidationSupport(context));
 
-        FHIRPathEngine fhirPathEngine = new FHIRPathEngine(hapiContext);
+		this.hapiContext = new HapiWorkerContext(context, this.validationSupport);// Init the Hapi Work
 
-		  IGenericClient clientStructureMap = null;
-        Mapper mapper = new Mapper(hapiContext, fhirPathEngine, null, structureMapDao, clientStructureMap);
+		FHIRPathEngine fhirPathEngine = new FHIRPathEngine(hapiContext);
 
-        Parameters.ParametersParameterComponent param = new Parameters.ParametersParameterComponent();
-        param.setName("input");
+		IGenericClient clientStructureMap = null;
+		Mapper mapper = new Mapper(hapiContext, fhirPathEngine, null, structureMapDao, clientStructureMap);
 
-        param.addPart(new Parameters.ParametersParameterComponent().setName("source")
-                .setResource(new Binary().setContentType("text/x-hl7-ft").setContentAsBase64(Base64.encode(hl7v2Message.getBytes()))));
+		Parameters.ParametersParameterComponent param = new Parameters.ParametersParameterComponent();
+		param.setName("input");
 
-        Parameters parameters = new Parameters().addParameter(param);
+		param.addPart(new Parameters.ParametersParameterComponent().setName("source")
+			.setResource(new Binary().setContentType("text/x-hl7-ft").setContentAsBase64(Base64.encode(hl7v2Message.getBytes()))));
 
-        Parameters result = mapper.map(getStructureMap(), parameters);
+		Parameters parameters = new Parameters().addParameter(param);
 
-        assertNotNull(result);
-        assertNotNull(result.getParameter("target").getResource());
-        assertTrue(result.getParameter("target").getResource() instanceof Binary);
-        Patient patient = (Patient) context.newJsonParser().parseResource(new ByteArrayInputStream(((Binary) result.getParameter("target").getResource()).getContent()));
-        assertEquals("JAMES", patient.getName().get(0).getGiven().get(0).getValue());
-    }
+		Parameters result = mapper.map(getStructureMap(), parameters);
 
-    private StructureMap getStructureMap() {
-        StructureMap structureMap = new StructureMap();
-		 structureMap.setUrl("http://example.org/base");
+		assertNotNull(result);
+		assertNotNull(result.getParameter("target").getResource());
+		assertTrue(result.getParameter("target").getResource() instanceof Binary);
+		Patient patient = (Patient) context.newJsonParser().parseResource(new ByteArrayInputStream(((Binary) result.getParameter("target").getResource()).getContent()));
+		assertEquals("JAMES", patient.getName().get(0).getGiven().get(0).getValue());
+	}
 
-        StructureMap.StructureMapGroupComponent group = new StructureMap.StructureMapGroupComponent();
-        group.setName("main");
-        group.setTypeMode(StructureMap.StructureMapGroupTypeMode.NONE);
+	@Test
+	void mapHL7v2ToFHIROneComponent() {
+		FhirContext context = FhirContext.forR4();
+		PrePopulatedValidationSupport prePopulatedValidationSupport = new PrePopulatedValidationSupport(context);
+		this.validationSupport = new ValidationSupportChain(prePopulatedValidationSupport, new DefaultProfileValidationSupport(context));
 
-        StructureMap.StructureMapGroupInputComponent inputSource = new StructureMap.StructureMapGroupInputComponent();
-        inputSource.setName("source");
-        inputSource.setType("HL7v2");
-        inputSource.setMode(StructureMap.StructureMapInputMode.SOURCE);
+		this.hapiContext = new HapiWorkerContext(context, this.validationSupport);// Init the Hapi Work
 
-        StructureMap.StructureMapGroupInputComponent inputTarget = new StructureMap.StructureMapGroupInputComponent();
-        inputTarget.setName("target");
-        inputTarget.setType("Patient");
-        inputTarget.setMode(StructureMap.StructureMapInputMode.TARGET);
+		FHIRPathEngine fhirPathEngine = new FHIRPathEngine(hapiContext);
 
-        group.addInput(inputSource);
-        group.addInput(inputTarget);
+		IGenericClient clientStructureMap = null;
+		Mapper mapper = new Mapper(hapiContext, fhirPathEngine, null, structureMapDao, clientStructureMap);
 
-        StructureMap.StructureMapGroupRuleComponent rule = new StructureMap.StructureMapGroupRuleComponent();
-        rule.setName("name");
+		Parameters.ParametersParameterComponent param = new Parameters.ParametersParameterComponent();
+		param.setName("input");
 
-        StructureMap.StructureMapGroupRuleSourceComponent sourceFirstName = new StructureMap.StructureMapGroupRuleSourceComponent();
-        sourceFirstName.setContext("source");
-        sourceFirstName.setElement("NK1-2-2");
-        sourceFirstName.setMin(1);
-        sourceFirstName.setMax("1");
-        sourceFirstName.setType("string");
-        sourceFirstName.setVariable("firstName0");
+		param.addPart(new Parameters.ParametersParameterComponent().setName("source")
+			.setResource(new Binary().setContentType("text/x-hl7-ft").setContentAsBase64(Base64.encode(hl7v2MessageOneComponent.getBytes()))));
 
-        StructureMap.StructureMapGroupRuleTargetComponent targetGivenName = new StructureMap.StructureMapGroupRuleTargetComponent();
-        targetGivenName.setContext("target");
-        targetGivenName.setContextType(StructureMap.StructureMapContextType.VARIABLE);
-        targetGivenName.setElement("name.given");
-        targetGivenName.setTransform(StructureMap.StructureMapTransform.COPY);
-        targetGivenName.addParameter().setValue(new IdType("firstName0"));
+		Parameters parameters = new Parameters().addParameter(param);
 
-        rule.addSource(sourceFirstName);
-        rule.addTarget(targetGivenName);
+		Parameters result = mapper.map(getStructureMap(), parameters);
 
-        group.addRule(rule);
-        structureMap.addGroup(group);
+		assertNotNull(result);
+		assertNotNull(result.getParameter("target").getResource());
+		assertTrue(result.getParameter("target").getResource() instanceof Binary);
+		Patient patient = (Patient) context.newJsonParser().parseResource(new ByteArrayInputStream(((Binary) result.getParameter("target").getResource()).getContent()));
+		assertEquals(0, patient.getName().size());
+	}
 
-        return structureMap;
-    }
+	private StructureMap getStructureMap() {
+		StructureMap structureMap = new StructureMap();
+		structureMap.setUrl("http://example.org/base");
+
+		StructureMap.StructureMapGroupComponent group = new StructureMap.StructureMapGroupComponent();
+		group.setName("main");
+		group.setTypeMode(StructureMap.StructureMapGroupTypeMode.NONE);
+
+		StructureMap.StructureMapGroupInputComponent inputSource = new StructureMap.StructureMapGroupInputComponent();
+		inputSource.setName("source");
+		inputSource.setType("HL7v2");
+		inputSource.setMode(StructureMap.StructureMapInputMode.SOURCE);
+
+		StructureMap.StructureMapGroupInputComponent inputTarget = new StructureMap.StructureMapGroupInputComponent();
+		inputTarget.setName("target");
+		inputTarget.setType("Patient");
+		inputTarget.setMode(StructureMap.StructureMapInputMode.TARGET);
+
+		group.addInput(inputSource);
+		group.addInput(inputTarget);
+
+		StructureMap.StructureMapGroupRuleComponent rule = new StructureMap.StructureMapGroupRuleComponent();
+		rule.setName("name");
+
+		StructureMap.StructureMapGroupRuleSourceComponent sourceFirstName = new StructureMap.StructureMapGroupRuleSourceComponent();
+		sourceFirstName.setContext("source");
+		sourceFirstName.setElement("NK1-2-2");
+		sourceFirstName.setMin(1);
+		sourceFirstName.setMax("1");
+		sourceFirstName.setType("string");
+		sourceFirstName.setVariable("firstName0");
+
+		StructureMap.StructureMapGroupRuleTargetComponent targetGivenName = new StructureMap.StructureMapGroupRuleTargetComponent();
+		targetGivenName.setContext("target");
+		targetGivenName.setContextType(StructureMap.StructureMapContextType.VARIABLE);
+		targetGivenName.setElement("name.given");
+		targetGivenName.setTransform(StructureMap.StructureMapTransform.COPY);
+		targetGivenName.addParameter().setValue(new IdType("firstName0"));
+
+		rule.addSource(sourceFirstName);
+		rule.addTarget(targetGivenName);
+
+		group.addRule(rule);
+		structureMap.addGroup(group);
+
+		return structureMap;
+	}
 }
