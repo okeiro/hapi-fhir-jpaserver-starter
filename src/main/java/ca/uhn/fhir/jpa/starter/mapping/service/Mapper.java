@@ -2241,8 +2241,11 @@ public class Mapper {
 		} else {
 			ConceptMap cmap = null;
 			if (conceptMapUrl.startsWith("#")) {
+				String conceptMapId = conceptMapUrl.substring(1);
 				for (Resource r : context.getStructureMap().getContained()) {
-					if (r instanceof ConceptMap && r.getId().equals(conceptMapUrl)) {
+					if (r instanceof ConceptMap
+							&& (conceptMapUrl.equals(r.getId()) || conceptMapId.equals(r.getId())
+									|| conceptMapId.equals(r.getIdElement().getIdPart()))) {
 						cmap = (ConceptMap) r;
 						su = context.getStructureMap().getUrl() + "#" + conceptMapUrl;
 					}
